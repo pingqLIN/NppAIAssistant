@@ -30,9 +30,7 @@ Notes:
 - plugin version: `0.1.0.0`
 - GitHub release tag: `v0.1.0`
 
-## Direct Download URL Pattern
-
-Replace placeholders with your actual repo information:
+## Direct Download URL
 
 ```text
 https://github.com/pingqLIN/NppAIAssistant/releases/download/v0.1.0/NppAIAssistant-0.1.0.0-x64.zip

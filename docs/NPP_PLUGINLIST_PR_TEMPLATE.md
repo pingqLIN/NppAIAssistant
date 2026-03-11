@@ -47,7 +47,7 @@ NppAIAssistant is a lightweight AI assistant plugin for Notepad++ with:
   "folder-name": "NppAIAssistant",
   "display-name": "NppAIAssistant",
   "version": "0.1.0.0",
-  "id": "<sha256-of-final-zip>",
+  "id": "2C94E42609E9A49F9B9840D617CD345635E6E9F7FCF4F5975884C355554F955E",
   "repository": "https://github.com/pingqLIN/NppAIAssistant/releases/download/v0.1.0/NppAIAssistant-0.1.0.0-x64.zip",
   "description": "Lightweight AI assistant plugin for Notepad++ with visible prompts and single-turn behavior.",
   "author": "NppAIAssistant Contributors",
@@ -57,7 +57,7 @@ NppAIAssistant is a lightweight AI assistant plugin for Notepad++ with:
 
 ### Checklist
 
-- [ ] Final GitHub repo URL replaced
-- [ ] Final release asset URL replaced
-- [ ] SHA-256 updated from final uploaded zip
+- [x] Final GitHub repo URL replaced
+- [x] Final release asset URL replaced
+- [x] SHA-256 updated from final uploaded zip
 - [ ] Entry added to the correct architecture file

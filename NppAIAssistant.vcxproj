@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="Current"
+  xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectName>NppAIAssistant</ProjectName>
+    <ProjectGuid>{D0E0AF6D-8F98-4C8E-9E9D-4A57B364A4B2}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings" />
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props"
+      Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')"
+      Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <OutDir>$(ProjectDir)build\x64\$(Configuration)\plugins\NppAIAssistant\</OutDir>
+    <IntDir>$(ProjectDir)build\x64\$(Configuration)\obj\</IntDir>
+    <TargetName>NppAIAssistant</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <OutDir>$(ProjectDir)build\x64\$(Configuration)\plugins\NppAIAssistant\</OutDir>
+    <IntDir>$(ProjectDir)build\x64\$(Configuration)\obj\</IntDir>
+    <TargetName>NppAIAssistant</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)src\shared;$(ProjectDir)vendor\notepadpp\PluginsManager;$(ProjectDir)vendor\notepadpp\DockingWnd;$(ProjectDir)vendor\scintilla\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;UNICODE;_UNICODE;NOMINMAX;WIN32_LEAN_AND_MEAN;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>comctl32.lib;crypt32.lib;shell32.lib;shlwapi.lib;winhttp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)src\shared;$(ProjectDir)vendor\notepadpp\PluginsManager;$(ProjectDir)vendor\notepadpp\DockingWnd;$(ProjectDir)vendor\scintilla\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;UNICODE;_UNICODE;NOMINMAX;WIN32_LEAN_AND_MEAN;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>comctl32.lib;crypt32.lib;shell32.lib;shlwapi.lib;winhttp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="src\NppAIAssistant.cpp" />
+    <ClCompile Include="src\shared\HttpClient.cpp" />
+    <ClCompile Include="src\shared\LLMApiClient.cpp" />
+    <ClCompile Include="src\shared\SecureStorage.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\NppAIAssistantResources.h" />
+    <ClInclude Include="src\NppAIAssistantVersion.h" />
+    <ClInclude Include="src\shared\HttpClient.h" />
+    <ClInclude Include="src\shared\LLMApiClient.h" />
+    <ClInclude Include="src\shared\SecureStorage.h" />
+    <ClInclude Include="vendor\notepadpp\PluginsManager\Notepad_plus_msgs.h" />
+    <ClInclude Include="vendor\notepadpp\PluginsManager\PluginInterface.h" />
+    <ClInclude Include="vendor\notepadpp\DockingWnd\Docking.h" />
+    <ClInclude Include="vendor\notepadpp\DockingWnd\dockingResource.h" />
+    <ClInclude Include="vendor\scintilla\include\Sci_Position.h" />
+    <ClInclude Include="vendor\scintilla\include\Scintilla.h" />
+    <ClInclude Include="vendor\scintilla\include\ScintillaMessages.h" />
+    <ClInclude Include="vendor\scintilla\include\ScintillaStructures.h" />
+    <ClInclude Include="vendor\scintilla\include\ScintillaTypes.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="src\NppAIAssistantResources.rc" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets" />
+</Project>

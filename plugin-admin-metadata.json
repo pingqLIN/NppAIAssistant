@@ -1,0 +1,8 @@
+{
+  "folderName": "NppAIAssistant",
+  "displayName": "NppAIAssistant",
+  "description": "Lightweight AI assistant plugin for Notepad++ with visible prompts and single-turn behavior.",
+  "author": "NppAIAssistant Contributors",
+  "homepage": "https://github.com/your-org-or-user/notepad-plus-plus-llm",
+  "repository": "https://github.com/your-org-or-user/notepad-plus-plus-llm"
+}

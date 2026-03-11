@@ -82,7 +82,7 @@ The script reads the DLL version directly and will fail if you try to package wi
 4. Re-run the packaging script with the final release URL:
 
 ```powershell
-.\scripts\package-npp-ai-plugin.ps1 -Platform x64 -ReleaseUrl "https://github.com/<owner>/<repo>/releases/download/v0.1.0/NppAIAssistant-0.1.0.0-x64.zip"
+.\scripts\package-npp-ai-plugin.ps1 -Platform x64 -ReleaseUrl "https://github.com/pingqLIN/NppAIAssistant/releases/download/v0.1.0/NppAIAssistant-0.1.0.0-x64.zip"
 ```
 
 5. Copy the generated entry JSON into the correct `nppPluginList` architecture file

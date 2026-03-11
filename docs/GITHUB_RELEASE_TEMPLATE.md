@@ -35,5 +35,5 @@ Notes:
 Replace placeholders with your actual repo information:
 
 ```text
-https://github.com/<owner>/<repo>/releases/download/v0.1.0/NppAIAssistant-0.1.0.0-x64.zip
+https://github.com/pingqLIN/NppAIAssistant/releases/download/v0.1.0/NppAIAssistant-0.1.0.0-x64.zip
 ```

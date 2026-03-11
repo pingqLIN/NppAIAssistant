@@ -3,6 +3,6 @@
   "displayName": "NppAIAssistant",
   "description": "Lightweight AI assistant plugin for Notepad++ with visible prompts and single-turn behavior.",
   "author": "NppAIAssistant Contributors",
-  "homepage": "https://github.com/your-org-or-user/notepad-plus-plus-llm",
-  "repository": "https://github.com/your-org-or-user/notepad-plus-plus-llm"
+  "homepage": "https://github.com/pingqLIN/NppAIAssistant",
+  "repository": "https://github.com/pingqLIN/NppAIAssistant"
 }

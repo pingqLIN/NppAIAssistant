@@ -44,28 +44,25 @@ This repository is focused on the plugin itself. It does not carry the full Note
 
 ## Screenshots
 
-### Prompt preview in settings
+### Settings dialog
 
-See the exact prompt being built as you adjust presets, language, encoding guidance, and output rules.
-
-<p align="center">
-  <img src="docs/assets/screenshots/settings-prompt-preview.png" alt="Prompt Preview" width="680">
-</p>
-
-### Preset-driven prompt builder
-
-Switch between presets to quickly configure scenario modules and response parameters.
-
-<p align="center">
-  <img src="docs/assets/screenshots/settings-preset-dropdown.png" alt="Preset Dropdown" width="680">
-</p>
+<table>
+<tr>
+<td align="center"><strong>Prompt preview</strong><br><sub>See the exact prompt being built as you adjust presets and output rules</sub></td>
+<td align="center"><strong>Preset-driven prompt builder</strong><br><sub>Switch presets to quickly configure scenario modules and parameters</sub></td>
+</tr>
+<tr>
+<td><img src="docs/assets/screenshots/settings-prompt-preview.png" alt="Prompt Preview" width="380"></td>
+<td><img src="docs/assets/screenshots/settings-preset-dropdown.png" alt="Preset Dropdown" width="380"></td>
+</tr>
+</table>
 
 ### Context menu actions
 
 Trigger explanation, refactoring, comments, and fixes directly from the editor.
 
 <p align="center">
-  <img src="docs/assets/screenshots/context-menu-actions.png" alt="Context Menu Actions" width="480">
+  <img src="docs/assets/screenshots/context-menu-actions.png" alt="Context Menu Actions" width="420">
 </p>
 
 ## Build

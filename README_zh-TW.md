@@ -44,28 +44,25 @@
 
 ## 截圖
 
-### 設定中的提示詞預覽
+### 設定對話框
 
-調整 preset、回覆語言、編碼建議和輸出規則時，即時顯示正在組裝的提示詞。
-
-<p align="center">
-  <img src="docs/assets/screenshots/settings-prompt-preview.png" alt="提示詞預覽" width="680">
-</p>
-
-### Preset 驅動的提示組裝
-
-切換 preset 快速配置情境模組與回覆參數。
-
-<p align="center">
-  <img src="docs/assets/screenshots/settings-preset-dropdown.png" alt="Preset 下拉選單" width="680">
-</p>
+<table>
+<tr>
+<td align="center"><strong>提示詞預覽</strong><br><sub>調整 preset 和輸出規則時，即時顯示正在組裝的提示詞</sub></td>
+<td align="center"><strong>Preset 驅動的提示組裝</strong><br><sub>切換 preset 快速配置情境模組與回覆參數</sub></td>
+</tr>
+<tr>
+<td><img src="docs/assets/screenshots/settings-prompt-preview.png" alt="提示詞預覽" width="380"></td>
+<td><img src="docs/assets/screenshots/settings-preset-dropdown.png" alt="Preset 下拉選單" width="380"></td>
+</tr>
+</table>
 
 ### 右鍵功能選單
 
 直接在編輯器觸發解說、重構、加註解、修正等操作。
 
 <p align="center">
-  <img src="docs/assets/screenshots/context-menu-actions.png" alt="右鍵功能選單" width="480">
+  <img src="docs/assets/screenshots/context-menu-actions.png" alt="右鍵功能選單" width="420">
 </p>
 
 ## 建置

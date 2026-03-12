@@ -1,105 +1,142 @@
-[繁體中文](README_zh-TW.md)
+<p align="center">
+  <strong>NppAIAssistant</strong><br>
+  A lightweight AI assistant plugin for Notepad++
+</p>
 
-# NppAIAssistant for Notepad++
+<p align="center">
+  <a href="https://github.com/pingqLIN/NppAIAssistant/releases/tag/v0.1.0"><img src="https://img.shields.io/github/v/release/pingqLIN/NppAIAssistant?label=release" alt="Release"></a>
+  <a href="https://github.com/pingqLIN/NppAIAssistant/releases"><img src="https://img.shields.io/github/downloads/pingqLIN/NppAIAssistant/total" alt="Downloads"></a>
+  <a href="https://notepad-plus-plus.org/"><img src="https://img.shields.io/badge/platform-Windows-0078D6" alt="Platform"></a>
+  <a href="https://notepad-plus-plus.org/"><img src="https://img.shields.io/badge/Notepad++-Plugin-90E59A" alt="Notepad++"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="License"></a>
+  <a href="https://github.com/notepad-plus-plus/nppPluginList/pull/1051"><img src="https://img.shields.io/badge/Plugins%20Admin-PR%20submitted-success" alt="Plugins Admin PR"></a>
+</p>
 
-[![Release](https://img.shields.io/github/v/release/pingqLIN/NppAIAssistant?label=release)](https://github.com/pingqLIN/NppAIAssistant/releases/tag/v0.1.0)
-[![Downloads](https://img.shields.io/github/downloads/pingqLIN/NppAIAssistant/total)](https://github.com/pingqLIN/NppAIAssistant/releases)
-[![Platform](https://img.shields.io/badge/platform-Windows-0078D6)](https://notepad-plus-plus.org/)
-[![Notepad++](https://img.shields.io/badge/Notepad++-Plugin-90E59A)](https://notepad-plus-plus.org/)
-[![License](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
-[![Plugins Admin PR](https://img.shields.io/badge/Plugins%20Admin-PR%20submitted-success)](https://github.com/notepad-plus-plus/nppPluginList/pull/1051)
+<p align="center">
+  <a href="README_zh-TW.md">繁體中文</a>
+</p>
 
-A lightweight AI assistant plugin for Notepad++ with visible prompts, modular single-turn profiles, and no hidden memory between requests.
+---
+
+Visible prompts, modular single-turn profiles, and no hidden memory between requests.
 
 This repository is focused on the plugin itself. It does not carry the full Notepad++ source history, which keeps the project easier to publish, review, package, and release.
 
+## Table of Contents
+
+- [Why It Stands Out](#why-it-stands-out)
+- [Screenshots](#screenshots)
+- [Build](#build)
+- [Install](#install)
+- [Repository Layout](#repository-layout)
+- [Release and Plugins Admin](#release-and-plugins-admin)
+
 ## Why It Stands Out
 
-- Lightweight plugin architecture instead of a permanent core fork
-- Prompt visibility with a live preview of the exact prompt structure
-- Single-turn conversations with no hidden cross-request memory
-- Dynamic model loading after provider login or API key setup
-- Practical context-menu actions for editing workflows
-- English and Traditional Chinese UI support
-
-## Core Experience
-
-### Lightweight by design
-`NppAIAssistant` ships like a regular Notepad++ plugin. Installation stays familiar, maintenance stays manageable, and release packaging fits the normal plugin ecosystem.
-
-### Prompt visibility
-The settings dialog exposes the generated prompt structure. As you switch presets, language, encoding guidance, response detail, scenario modules, or output rules, the preview updates immediately.
-
-### No hidden memory
-Each request is treated as a fresh single-turn interaction. The plugin does not depend on chat history as hidden context, which makes behavior easier to audit and easier to predict.
-
-### Editing-first workflow
-You can ask through the AI panel or trigger actions directly from the editor context menu for explanation, refactoring, comments, fixes, and related tasks.
+| Feature | Description |
+|---------|-------------|
+| **Lightweight** | Ships as a standard Notepad++ plugin — no core fork needed |
+| **Prompt visibility** | Live preview of the exact prompt structure in settings |
+| **No hidden memory** | Single-turn conversations with no cross-request context |
+| **Dynamic models** | Model list loads after provider login or API key setup |
+| **Context menu** | Practical right-click actions for editing workflows |
+| **Bilingual UI** | English and Traditional Chinese support |
 
 ## Screenshots
 
 ### Prompt preview in settings
-![Prompt Preview](docs/assets/screenshots/settings-prompt-preview.png)
+
+See the exact prompt being built as you adjust presets, language, encoding guidance, and output rules.
+
+<p align="center">
+  <img src="docs/assets/screenshots/settings-prompt-preview.png" alt="Prompt Preview" width="680">
+</p>
 
 ### Preset-driven prompt builder
-![Preset Dropdown](docs/assets/screenshots/settings-preset-dropdown.png)
+
+Switch between presets to quickly configure scenario modules and response parameters.
+
+<p align="center">
+  <img src="docs/assets/screenshots/settings-preset-dropdown.png" alt="Preset Dropdown" width="680">
+</p>
 
 ### Context menu actions
-![Context Menu Actions](docs/assets/screenshots/context-menu-actions.png)
 
-## Repository Layout
+Trigger explanation, refactoring, comments, and fixes directly from the editor.
 
-- `src/` plugin source, resources, version info
-- `src/shared/` HTTP, provider API, and secure storage helpers
-- `vendor/notepadpp/` vendored plugin and docking headers needed for standalone builds
-- `vendor/scintilla/include/` Scintilla headers required by the plugin interface
-- `docs/` usage guides, release notes, and submission docs
-- `scripts/` install and package helpers
-
-More detail:
-- [Project Structure](PROJECT_STRUCTURE.md)
-- [Usage Guide](docs/USAGE.md)
-- [Plugins Admin Submission Guide](docs/PLUGIN_ADMIN_SUBMISSION.md)
+<p align="center">
+  <img src="docs/assets/screenshots/context-menu-actions.png" alt="Context Menu Actions" width="480">
+</p>
 
 ## Build
 
-### Visual Studio / MSBuild
+<details>
+<summary><strong>Visual Studio / MSBuild</strong></summary>
 
 ```powershell
-& "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe" "NppAIAssistant.vcxproj" /p:Configuration=Release /p:Platform=x64 /m
+& "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe" `
+    "NppAIAssistant.vcxproj" /p:Configuration=Release /p:Platform=x64 /m
 ```
 
-### CMake
+</details>
+
+<details>
+<summary><strong>CMake</strong></summary>
 
 ```powershell
 cmake -S . -B build
 cmake --build build --config Release
 ```
 
-Expected output:
+</details>
 
-`build/x64/Release/plugins/NppAIAssistant/NppAIAssistant.dll`
+Expected output: `build/x64/Release/plugins/NppAIAssistant/NppAIAssistant.dll`
 
 ## Install
 
 Copy the built DLL to:
 
-`<Notepad++>\plugins\NppAIAssistant\NppAIAssistant.dll`
+```
+<Notepad++>\plugins\NppAIAssistant\NppAIAssistant.dll
+```
 
-Or use:
+Or run the install script:
 
-`scripts/install-npp-ai-plugin.ps1`
+```powershell
+scripts/install-npp-ai-plugin.ps1
+```
+
+## Repository Layout
+
+```
+NppAIAssistant/
+├── src/                  # Plugin source, resources, version info
+│   └── shared/           # HTTP, provider API, secure storage helpers
+├── vendor/
+│   ├── notepadpp/        # Vendored plugin & docking headers
+│   └── scintilla/include # Scintilla headers for the plugin interface
+├── docs/                 # Usage guides, release notes, submission docs
+└── scripts/              # Install and package helpers
+```
+
+See also: [Project Structure](PROJECT_STRUCTURE.md) · [Usage Guide](docs/USAGE.md) · [Plugins Admin Submission Guide](docs/PLUGIN_ADMIN_SUBMISSION.md)
 
 ## Release and Plugins Admin
 
-The repository already includes packaging and submission helpers for Notepad++ Plugins Admin style releases.
+| Item | Path |
+|------|------|
+| Packaging script | `scripts/package-npp-ai-plugin.ps1` |
+| Metadata | `plugin-admin-metadata.json` |
+| Submission guide | [docs/PLUGIN_ADMIN_SUBMISSION.md](docs/PLUGIN_ADMIN_SUBMISSION.md) |
 
-- Packaging script: `scripts/package-npp-ai-plugin.ps1`
-- Metadata file: `plugin-admin-metadata.json`
-- Submission notes: [docs/PLUGIN_ADMIN_SUBMISSION.md](docs/PLUGIN_ADMIN_SUBMISSION.md)
-
-Recommended release setup:
+Recommended release config:
 
 - GitHub release tag: `v0.1.0`
 - Plugin version: `0.1.0.0`
 - Release asset: `NppAIAssistant-0.1.0.0-x64.zip`
+
+---
+
+<p align="center">
+  <sub>GPL-3.0 · <a href="https://github.com/pingqLIN/NppAIAssistant">GitHub</a></sub>
+</p>

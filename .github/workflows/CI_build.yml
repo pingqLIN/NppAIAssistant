@@ -1,0 +1,44 @@
+name: CI_build
+
+on: [push, pull_request]
+
+jobs:
+  build:
+
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        build_configuration: [Release, Debug]
+        build_platform: [x64, Win32, ARM64]
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v6
+
+    - name: Add msbuild to PATH
+      uses: microsoft/setup-msbuild@v2
+
+    - name: MSBuild of plugin dll
+      working-directory: .\
+      run: msbuild NppAIAssistant.vcxproj /m /p:configuration="${{ matrix.build_configuration }}" /p:platform="${{ matrix.build_platform }}"
+
+    - uses: olegtarasov/get-tag@v2.1.4
+      id: tagName
+      
+    - name: zip artifacts for ${{ matrix.build_platform }} Release
+      if: matrix.build_configuration == 'Release'
+      run: 7z a NppAIAssistant_${{ steps.tagName.outputs.tag }}_${{ matrix.build_platform }}.zip .\build\${{ matrix.build_platform }}\${{ matrix.build_configuration }}\plugins\NppAIAssistant\NppAIAssistant.dll
+
+    - name: Archive artifacts for ${{ matrix.build_platform }}
+      if: matrix.build_configuration == 'Release'
+      uses: actions/upload-artifact@v7
+      with:
+          name: NppAIAssistant_${{ steps.tagName.outputs.tag }}_${{ matrix.build_platform }}.zip
+          path: NppAIAssistant_${{ steps.tagName.outputs.tag }}_${{ matrix.build_platform }}.zip
+
+    - name: Create release on tagging
+      uses: softprops/action-gh-release@v2
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+          files: NppAIAssistant_${{ steps.tagName.outputs.tag }}_${{ matrix.build_platform }}.zip

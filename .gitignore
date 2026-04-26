@@ -1,6 +1,7 @@
 build/
 build-*/
 dist/
+.clean/
 .vs/
 *.user
 *.suo

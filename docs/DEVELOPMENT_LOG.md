@@ -14,6 +14,7 @@
 - Added `scripts/project-development-loop-state.ps1` so time-boxed development runs can persist the active batch, deadline, checkpoint, and next action outside the live agent session.
 - Added `scripts/project-development-loop-overnight.ps1` for overnight heartbeat logging and resumable supervisor state.
 - Added `scripts/doctor-msbuild-filetracker.ps1` to capture reproducible MSBuild/FileTracker diagnostics into repo-local logs.
+- Added `scripts/invoke-msbuild.ps1` to normalize missing Windows environment variables such as `SystemDrive`, `ProgramData`, and `LOCALAPPDATA` before invoking MSBuild.
 
 ## 2026-03-12
 

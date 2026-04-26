@@ -3,6 +3,7 @@ param(
   [string]$Configuration = 'Release',
   [string]$Platform = 'x64',
   [string]$ProjectFile = 'NppAIAssistant.vcxproj',
+  [string]$RepoRoot = '',
   [string]$LogPath = '',
   [switch]$SkipBuild
 )
@@ -10,7 +11,10 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+if (-not $RepoRoot) {
+  $RepoRoot = (Get-Location).Path
+}
+$repoRoot = (Resolve-Path $RepoRoot).Path
 if (-not [System.IO.Path]::IsPathRooted($ProjectFile)) {
   $ProjectFile = Join-Path $repoRoot $ProjectFile
 }
@@ -30,7 +34,9 @@ Ensure-ParentDirectory -Path $LogPath
 
 $interestingEnvVars = @(
   'APPDATA',
+  'ProgramData',
   'LOCALAPPDATA',
+  'SystemDrive',
   'TEMP',
   'TMP',
   'USERPROFILE',
@@ -54,11 +60,11 @@ $report.Add("projectExists=$(Test-Path $ProjectFile)")
 $report.Add("cwd=$((Get-Location).Path)")
 
 if (-not $SkipBuild) {
-  $msbuild = 'C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe'
-  $report.Add("msbuildPath=$msbuild")
-  $report.Add('msbuildAttempt=begin')
+  $wrapper = Join-Path $repoRoot 'scripts\invoke-msbuild.ps1'
+  $report.Add("msbuildWrapper=$wrapper")
+  $report.Add('msbuildAttempt=begin-with-sanitized-environment')
   try {
-    $buildOutput = & $msbuild $ProjectFile /p:Configuration=$Configuration /p:Platform=$Platform /m 2>&1
+    $buildOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $wrapper -RepoRoot $repoRoot -ProjectFile $ProjectFile -Configuration $Configuration -Platform $Platform 2>&1
     foreach ($line in @($buildOutput)) {
       $report.Add([string]$line)
     }

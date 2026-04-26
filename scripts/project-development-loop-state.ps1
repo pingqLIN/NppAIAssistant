@@ -11,6 +11,7 @@ param(
   [string]$Mode = '',
   [string]$Blockers = '',
   [string]$TelemetryStatus = '',
+  [string]$RepoRoot = '',
   [int]$DurationHours = 8,
   [string]$StatePath = ''
 )
@@ -18,7 +19,10 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+if (-not $RepoRoot) {
+  $RepoRoot = (Get-Location).Path
+}
+$repoRoot = (Resolve-Path $RepoRoot).Path
 
 if (-not $StatePath) {
   $StatePath = Join-Path $repoRoot '.codex\project-development-loop\active-run.json'

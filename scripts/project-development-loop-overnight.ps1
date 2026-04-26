@@ -2,6 +2,7 @@
 param(
   [string]$Batch = 'Overnight maintenance',
   [string]$NextAction = 'Resume from overnight report',
+  [string]$RepoRoot = '',
   [int]$DurationHours = 8,
   [int]$HeartbeatMinutes = 30,
   [string]$TokenUsagePath = '',
@@ -13,7 +14,10 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+if (-not $RepoRoot) {
+  $RepoRoot = (Get-Location).Path
+}
+$repoRoot = (Resolve-Path $RepoRoot).Path
 if (-not $StatePath) {
   $StatePath = Join-Path $repoRoot '.codex\project-development-loop\active-run.json'
 }
@@ -112,6 +116,7 @@ function Invoke-StateScript {
     '-NoProfile',
     '-ExecutionPolicy', 'Bypass',
     '-File', (Join-Path $PSScriptRoot 'project-development-loop-state.ps1'),
+    '-RepoRoot', $repoRoot,
     '-Action', $Action,
     '-StatePath', $StatePath,
     '-Batch', $Batch,

@@ -142,7 +142,6 @@ struct AIAssistantConfig {
   std::wstring openAIKey;
   std::wstring geminiKey;
   std::wstring claudeKey;
-  std::wstring copilotKey;
   std::wstring customPromptInstructions;
   LLMProvider defaultProvider = LLMProvider::OpenAI;
   UiLanguagePreference uiLanguagePreference = UiLanguagePreference::FollowNotepad;
@@ -188,7 +187,6 @@ UiLanguage g_uiLanguage = UiLanguage::English;
 const wchar_t *kOpenAIKeyName = L"openai_apikey";
 const wchar_t *kGeminiKeyName = L"gemini_apikey";
 const wchar_t *kClaudeKeyName = L"claude_apikey";
-const wchar_t *kCopilotKeyName = L"copilot_apikey";
 const wchar_t *kCopilotOauthKeyName = L"copilot_oauth_token";
 const wchar_t *kDefaultProviderName = L"default_provider";
 const wchar_t *kUiLanguagePreferenceName = L"ui_language_preference";
@@ -1041,11 +1039,11 @@ std::wstring formatMessageContent(const std::wstring &content, bool isUser) {
 std::wstring getProviderApiKey(LLMProvider provider) {
   switch (provider) {
   case LLMProvider::OpenAI:
-    return trimWhitespace(g_config.openAIKey);
+    return trimWhitespace(SecureStorage::loadApiKey(kOpenAIKeyName));
   case LLMProvider::Gemini:
-    return trimWhitespace(g_config.geminiKey);
+    return trimWhitespace(SecureStorage::loadApiKey(kGeminiKeyName));
   case LLMProvider::Claude:
-    return trimWhitespace(g_config.claudeKey);
+    return trimWhitespace(SecureStorage::loadApiKey(kClaudeKeyName));
   default:
     return L"";
   }
@@ -1056,6 +1054,12 @@ void wipeString(std::wstring &value) {
     SecureZeroMemory(value.data(), value.size() * sizeof(wchar_t));
     value.clear();
   }
+}
+
+void wipeConfigSecrets(AIAssistantConfig &config) {
+  wipeString(config.openAIKey);
+  wipeString(config.geminiKey);
+  wipeString(config.claudeKey);
 }
 
 bool parseStoredBool(const std::wstring &value, bool defaultValue) {
@@ -1251,10 +1255,6 @@ void updateChatDisplay() {
 
 void loadConfig() {
   g_config = AIAssistantConfig{};
-  g_config.openAIKey = SecureStorage::loadApiKey(kOpenAIKeyName);
-  g_config.geminiKey = SecureStorage::loadApiKey(kGeminiKeyName);
-  g_config.claudeKey = SecureStorage::loadApiKey(kClaudeKeyName);
-  g_config.copilotKey = SecureStorage::loadApiKey(kCopilotKeyName);
   if (SettingsStorage::loadSchemaVersion() >= kSettingsSchemaVersion) {
     loadPreferencesFromSettings(g_config);
   } else {
@@ -1280,10 +1280,10 @@ void saveConfig(const AIAssistantConfig &config) {
   SecureStorage::saveApiKey(kOpenAIKeyName, config.openAIKey);
   SecureStorage::saveApiKey(kGeminiKeyName, config.geminiKey);
   SecureStorage::saveApiKey(kClaudeKeyName, config.claudeKey);
-  SecureStorage::saveApiKey(kCopilotKeyName, config.copilotKey);
   savePreferencesToSettings(config);
   cleanupSecurePreferenceBlobs();
   g_config = config;
+  wipeConfigSecrets(g_config);
   g_config.defaultProvider = sanitizeProvider(g_config.defaultProvider);
   g_config.uiLanguagePreference =
       sanitizeUiLanguagePreference(static_cast<int>(g_config.uiLanguagePreference));
@@ -2206,6 +2206,7 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwnd, UINT message, WPARAM wParam,
       } else if (provider == LLMProvider::Claude) {
         testResponse = LLMApiClient::listClaudeModels(apiKey);
       }
+      wipeString(apiKey);
       ::SetCursor(oldCursor);
 
       std::wstring messageText;
@@ -2269,6 +2270,9 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwnd, UINT message, WPARAM wParam,
 
 void openSettingsDialog() {
   AIAssistantConfig edited = g_config;
+  edited.openAIKey = SecureStorage::loadApiKey(kOpenAIKeyName);
+  edited.geminiKey = SecureStorage::loadApiKey(kGeminiKeyName);
+  edited.claudeKey = SecureStorage::loadApiKey(kClaudeKeyName);
   if (::DialogBoxParamW(g_hInst, MAKEINTRESOURCEW(IDD_AIASSISTANT_SETTINGS),
                         g_nppData._nppHandle, SettingsDlgProc,
                         reinterpret_cast<LPARAM>(&edited)) == IDOK) {
@@ -2287,6 +2291,7 @@ void openSettingsDialog() {
     updateModelCombo();
     updateChatDisplay();
   }
+  wipeConfigSecrets(edited);
 }
 
 void completeCopilotAuth(bool success) {

@@ -1,5 +1,18 @@
 # Development Log
 
+## 2026-04-26
+
+### Secret lifetime reduction
+
+- Stopped loading OpenAI, Gemini, and Claude API keys into the long-lived global `g_config` state during plugin startup.
+- Switched provider requests to load secrets from `SecureStorage` on demand and wipe the transient request-local copy after use.
+- Limited settings-dialog secret lifetime to the dialog editing flow instead of the full plugin session.
+
+### Repeatable verification and loop state
+
+- Added `scripts/verify-security-regressions.ps1` for a small repeatable regression check over the secret-loading and redaction invariants.
+- Added `scripts/project-development-loop-state.ps1` so time-boxed development runs can persist the active batch, deadline, checkpoint, and next action outside the live agent session.
+
 ## 2026-03-12
 
 ### Security storage refactor

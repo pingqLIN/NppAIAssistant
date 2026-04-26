@@ -13,9 +13,13 @@ Implemented on 2026-03-12:
 - `SEC-03` Store only secrets in secure storage
 - `SEC-06` Keep symbol files and local build artifacts out of redistribution paths
 
-Still open:
+Implemented on 2026-04-26:
 
 - `SEC-04` Reduce in-memory secret lifetime further
+- partial `SEC-05` Add repeatable regression coverage for secret-loading and redaction invariants
+
+Still open:
+
 - `SEC-05` Add broader security regression coverage
 - `SEC-07` Evaluate a future abstraction for OS-managed secret storage
 
@@ -132,8 +136,9 @@ Acceptance criteria:
 
 Current state:
 
-- API keys are loaded into `g_config` and remain available in process memory for the plugin lifetime.
-- The current code favors convenience, but long-lived plaintext secrets increase the impact of memory inspection.
+- Provider API keys are loaded on demand from `SecureStorage` instead of being hydrated into `g_config` during startup.
+- The settings dialog still holds edited provider keys in memory while the dialog is open, which is expected for an editable UI surface.
+- Copilot auth tokens remain in long-lived process state while the user is signed in because the current flow needs them for polling and token refresh.
 
 Recommended change:
 
@@ -157,7 +162,8 @@ Acceptance criteria:
 
 Current state:
 
-- The repo has no visible security-specific regression checklist for secret storage and redaction behavior.
+- The repo now has a manual checklist plus a lightweight scripted regression pass for key-loading and redaction invariants.
+- There is still no compiled automated test target for helper-level secret handling.
 
 Recommended change:
 

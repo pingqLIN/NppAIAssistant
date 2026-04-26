@@ -2,6 +2,11 @@
 
 Use this checklist when validating secret handling changes or preparing a release.
 
+## Scripted regression pass
+
+1. Run `scripts/verify-security-regressions.ps1`.
+2. Confirm the script reports only `PASS` lines.
+
 ## Storage split
 
 1. Launch the plugin with no prior settings and save a provider API key plus a few prompt preferences.

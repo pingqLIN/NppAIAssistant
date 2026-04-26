@@ -8,6 +8,9 @@ param(
   [string]$Checkpoint = '',
   [string]$NextAction = '',
   [string]$Notes = '',
+  [string]$Mode = '',
+  [string]$Blockers = '',
+  [string]$TelemetryStatus = '',
   [int]$DurationHours = 8,
   [string]$StatePath = ''
 )
@@ -54,6 +57,47 @@ function New-Timestamp {
   return (Get-Date).ToUniversalTime().ToString('o')
 }
 
+function Normalize-ListValue {
+  param([object]$Value)
+  if ($null -eq $Value) {
+    return @()
+  }
+
+  if ($Value -is [System.Array]) {
+    return @($Value | Where-Object { $_ -ne '' })
+  }
+
+  return @($Value).Where({ $_ -ne '' })
+}
+
+function Update-StateCommon {
+  param([pscustomobject]$State)
+
+  if ($Batch) {
+    $State.activeBatch = $Batch
+  }
+  if ($Checkpoint) {
+    $State.lastCompletedCheckpoint = $Checkpoint
+  }
+  if ($NextAction) {
+    $State.nextAction = $NextAction
+  }
+  if ($Mode) {
+    $State.mode = $Mode
+  }
+  if ($TelemetryStatus) {
+    $State.telemetryStatus = $TelemetryStatus
+  }
+  if ($Notes) {
+    $State.notes = Normalize-ListValue $State.notes + $Notes
+  }
+  if ($Blockers) {
+    $State.blockers = Normalize-ListValue $State.blockers + $Blockers
+  }
+  $State.repoRoot = $repoRoot
+  $State.updatedAtUtc = New-Timestamp
+}
+
 switch ($Action) {
   'start' {
     $startedAt = Get-Date
@@ -64,10 +108,13 @@ switch ($Action) {
       startedAtUtc = $startedAt.ToUniversalTime().ToString('o')
       deadlineUtc = $deadline.ToString('o')
       durationHours = $DurationHours
+      mode = $(if ($Mode) { $Mode } else { 'maintenance' })
       activeBatch = $Batch
       lastCompletedCheckpoint = ''
       nextAction = $NextAction
-      notes = @($Notes).Where({ $_ -ne '' })
+      notes = Normalize-ListValue $Notes
+      blockers = Normalize-ListValue $Blockers
+      telemetryStatus = $(if ($TelemetryStatus) { $TelemetryStatus } else { 'unknown' })
       updatedAtUtc = New-Timestamp
     }
     Write-State -Path $StatePath -State $state
@@ -81,20 +128,7 @@ switch ($Action) {
       throw "No active state file found at $StatePath"
     }
 
-    if ($Batch) {
-      $state.activeBatch = $Batch
-    }
-    if ($Checkpoint) {
-      $state.lastCompletedCheckpoint = $Checkpoint
-    }
-    if ($NextAction) {
-      $state.nextAction = $NextAction
-    }
-    if ($Notes) {
-      $existingNotes = @($state.notes)
-      $state.notes = $existingNotes + $Notes
-    }
-    $state.updatedAtUtc = New-Timestamp
+    Update-StateCommon -State $state
     Write-State -Path $StatePath -State $state
     $state | ConvertTo-Json -Depth 6
     break
@@ -107,17 +141,7 @@ switch ($Action) {
     }
 
     $state.status = 'completed'
-    if ($Checkpoint) {
-      $state.lastCompletedCheckpoint = $Checkpoint
-    }
-    if ($NextAction) {
-      $state.nextAction = $NextAction
-    }
-    if ($Notes) {
-      $existingNotes = @($state.notes)
-      $state.notes = $existingNotes + $Notes
-    }
-    $state.updatedAtUtc = New-Timestamp
+    Update-StateCommon -State $state
     Write-State -Path $StatePath -State $state
     $state | ConvertTo-Json -Depth 6
     break

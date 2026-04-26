@@ -12,6 +12,8 @@
 
 - Added `scripts/verify-security-regressions.ps1` for a small repeatable regression check over the secret-loading and redaction invariants.
 - Added `scripts/project-development-loop-state.ps1` so time-boxed development runs can persist the active batch, deadline, checkpoint, and next action outside the live agent session.
+- Added `scripts/project-development-loop-overnight.ps1` for overnight heartbeat logging and resumable supervisor state.
+- Added `scripts/doctor-msbuild-filetracker.ps1` to capture reproducible MSBuild/FileTracker diagnostics into repo-local logs.
 
 ## 2026-03-12
 

@@ -10,3 +10,5 @@ dist/
 *.pdb
 *.ipch
 .codex/project-development-loop/*.json
+.codex/project-development-loop/*.jsonl
+.codex/project-development-loop/*.log

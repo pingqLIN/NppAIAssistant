@@ -6,6 +6,7 @@ Use this checklist when validating secret handling changes or preparing a releas
 
 1. Run `scripts/verify-security-regressions.ps1`.
 2. Confirm the script reports only `PASS` lines.
+3. If an overnight run is being prepared, initialize `scripts/project-development-loop-overnight.ps1 -NoLoop` so the durable state file already captures the active batch and telemetry status.
 
 ## Storage split
 

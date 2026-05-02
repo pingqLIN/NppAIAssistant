@@ -46,8 +46,13 @@ This keeps the public Git tag clean while preserving the exact four-part DLL ver
 - The package places `NppAIAssistant.dll` at the zip root
 - The packaging script rejects staged `.pdb` symbol files before zip creation
 - Documentation is placed under `doc/NppAIAssistant/`
+- The package smoke script can stage the zip into a temporary Notepad++ plugin
+  layout without touching the installed Notepad++ directory
 
 ### Remaining external step
+- Publish the generated zip as a GitHub Release asset
+- Re-run the packaging script with `-ReleaseUrl` pointing directly to that
+  HTTPS `.zip` asset
 - Submit a PR to `https://github.com/notepad-plus-plus/nppPluginList`
 - Optionally add `x86` or `arm64` builds if you want those architectures listed
 
@@ -71,6 +76,14 @@ This will generate:
 - `dist/NppAIAssistant-0.1.0.0-x64.npp-plugin-entry.json`
 
 The script reads the DLL version directly and will fail if you try to package with a mismatched version string.
+Without `-ReleaseUrl`, the manifest is marked `PluginsAdminReady: false` and is
+valid for local package smoke only.
+
+Smoke test the generated zip layout:
+
+```powershell
+.\scripts\smoke-package-install.ps1
+```
 
 ## Recommended Submission Workflow
 
@@ -103,4 +116,6 @@ Update this file before packaging if you need to change:
 
 - The current repo is ready for `x64` submission preparation.
 - It is not yet ready for `x86` or `arm64` distribution unless those builds are added and tested.
-- The release asset URL and SHA-256 have already been verified for the published `v0.1.0` package.
+- The release asset URL is not yet present in the current local manifest. Do not
+  submit to `nppPluginList` until the GitHub Release zip URL is supplied and the
+  package is regenerated with `PluginsAdminReady: true`.

@@ -38,6 +38,13 @@
 |------|------|
 | **輕量架構** | 以標準 Notepad++ 外掛發佈，不需要 fork 核心 |
 | **提示詞可視化** | 設定中即時預覽實際送出的提示結構 |
+| **提示詞區塊** | 以可視方式組裝 Mandatory transparency、Identity、Rules、System、Assignment 與 User Request |
+| **模板控制** | Identity、Rules、Assignment 模板可編輯、插入 token 並重置 |
+| **估算 token 摘要** | 設定預覽顯示各區塊與總量的 estimated tokens |
+| **顯示比例** | AI 面板文字比例可透過 `A+` / `A-` 調整並保存 |
+| **等待狀態** | Provider 呼叫移出 UI thread，等待時顯示動畫 |
+| **明確記憶** | 可選的可視 Memory 區塊預設關閉，並以非機敏設定儲存 |
+| **自訂右鍵模板** | 最多三組使用者自訂右鍵 template，可選擇是否取代選取文字 |
 | **不保留記憶** | 單輪對話設計，不依賴跨請求隱藏上下文 |
 | **動態模型載入** | 登入或設定 API Key 後自動取得可用模型 |
 | **更安全的秘密儲存** | 機敏憑證改為本機 DPAPI 保護並支援舊版遷移 |
@@ -49,8 +56,19 @@
 - API Key 與 OAuth token 儲存在 `%LocalAppData%\Notepad++\AIAssistant`。
 - 機敏值使用 Windows DPAPI 保護。
 - 一般偏好設定改存於 `%AppData%\Notepad++\plugins\config\NppAIAssistant.ini`。
+- 提示詞模板與提示詞區塊偏好屬於非機敏設定。
 - 更新後首次啟動會自動遷移舊版 roaming secure blobs。
 - Gemini 連線改用 `x-goog-api-key` header，不再把 API key 放進 query string。
+
+## 目前功能邊界
+
+| 項目 | 狀態 |
+|------|------|
+| 提示詞區塊與 estimated token 預覽 | 已實作 |
+| 既有暫停 Copilot 程式碼以外的 OAuth 儲存模型 | 規劃中，尚未驗證 |
+| 明確可視 Memory 儲存與注入 | 已實作，預設關閉 |
+| 輸出等待動畫 | 已實作 |
+| 三組自訂右鍵 template | 已實作 |
 
 ## 截圖
 
@@ -147,6 +165,19 @@ NppAIAssistant/
 - GitHub release tag：`v0.1.0`
 - 外掛版本：`0.1.0.0`
 - Release 資產：`NppAIAssistant-0.1.0.0-x64.zip`
+
+## AI 輔助開發聲明
+
+本專案使用 AI 輔助開發。
+
+| 角色 | Model / 服務 | 貢獻 |
+|------|--------------|------|
+| 協調者 | OpenAI Codex | 規劃、實作、審查整合、文件更新 |
+| 審查者 | OpenAI Codex 子代理 | 安全性、Notepad++ 外掛流程、UI/prompt 架構審查 |
+
+> 免責聲明：AI 產生的變更會透過本機建置、腳本與必要的手動外掛 gate
+> 進行審查與驗證，但仍不保證其正確性、安全性或適用於任何特定目的。
+> 使用風險自負。
 
 ---
 

@@ -38,6 +38,13 @@ This repository is focused on the plugin itself. It does not carry the full Note
 |---------|-------------|
 | **Lightweight** | Ships as a standard Notepad++ plugin with no core fork |
 | **Prompt visibility** | Live preview of the exact prompt structure in settings |
+| **Prompt sections** | Mandatory transparency, identity, rules, system, assignment, and user request blocks are assembled visibly |
+| **Template controls** | Identity, rules, and assignment templates can be edited, token-inserted, and reset |
+| **Estimated token summary** | Settings preview shows per-section and total estimated tokens |
+| **Display scale** | AI panel text scale persists through the `A+` and `A-` controls |
+| **Waiting state** | Provider calls run off the UI thread with a visible waiting animation |
+| **Explicit memory** | Optional visible Memory section is disabled by default and stored as non-secret settings |
+| **Custom context templates** | Up to three user-defined right-click templates with optional replacement mode |
 | **No hidden memory** | Single-turn conversations with no cross-request context |
 | **Dynamic models** | Model list loads after provider login or API key setup |
 | **Safer secret storage** | Provider secrets now live in local DPAPI storage with legacy migration |
@@ -49,8 +56,19 @@ This repository is focused on the plugin itself. It does not carry the full Note
 - API keys and OAuth tokens are stored in `%LocalAppData%\Notepad++\AIAssistant`.
 - Secret values are protected with Windows DPAPI.
 - Non-secret preferences are stored separately in `%AppData%\Notepad++\plugins\config\NppAIAssistant.ini`.
+- Prompt templates and prompt-section preferences are non-secret settings.
 - Legacy roaming secure blobs are migrated automatically on first launch of the updated build.
 - Gemini requests now authenticate with the `x-goog-api-key` header instead of query-string API keys.
+
+## Current Capability Boundaries
+
+| Area | Status |
+|------|--------|
+| Prompt sections and estimated token preview | Implemented |
+| OAuth storage model beyond existing paused Copilot code | Planned, not validated |
+| Explicit visible memory storage and injection | Implemented, disabled by default |
+| Waiting animation during provider output | Implemented |
+| Three custom right-click templates | Implemented |
 
 ## Screenshots
 
@@ -147,6 +165,20 @@ Recommended release config:
 - GitHub release tag: `v0.1.0`
 - Plugin version: `0.1.0.0`
 - Release asset: `NppAIAssistant-0.1.0.0-x64.zip`
+
+## AI-Assisted Development
+
+This project was developed with AI assistance.
+
+| Role | Model / Service | Contribution |
+|------|-----------------|--------------|
+| Coordinator | OpenAI Codex | Planning, implementation, review integration, documentation |
+| Reviewers | OpenAI Codex subagents | Security, Notepad++ plugin workflow, UI/prompt architecture review |
+
+> Disclaimer: AI-generated changes are reviewed and validated with local builds,
+> scripts, and manual plugin gates where applicable, but no guarantee can be made
+> regarding correctness, security, or fitness for any particular purpose. Use at
+> your own risk.
 
 ---
 

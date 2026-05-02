@@ -5,8 +5,10 @@
 #include <cctype>
 #include <ctime>
 #include <cwctype>
+#include <memory>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "PluginInterface.h"
@@ -23,14 +25,23 @@ constexpr wchar_t kPanelTitle[] = L"AI Assistant";
 constexpr int kSettingsSchemaVersion = 1;
 constexpr size_t kMenuCount = 6;
 constexpr UINT_PTR kCopilotPollTimerId = 9001;
+constexpr UINT_PTR kRequestAnimationTimerId = 9002;
+constexpr UINT WM_AI_REQUEST_COMPLETE = WM_APP + 101;
 constexpr DWORD kDefaultCopilotPollMs = 5000;
+constexpr DWORD kRequestAnimationMs = 350;
 constexpr int kDefaultFontSize = 10;
 constexpr int kMinFontSize = 8;
 constexpr int kMaxFontSize = 18;
+constexpr int kDefaultDisplayScalePercent = 100;
+constexpr int kMinDisplayScalePercent = 80;
+constexpr int kMaxDisplayScalePercent = 150;
+constexpr size_t kMaxMemoryChars = 3600;
 constexpr UINT kAiContextExplain = 1;
 constexpr UINT kAiContextRefactor = 2;
 constexpr UINT kAiContextComments = 3;
 constexpr UINT kAiContextFix = 4;
+constexpr UINT kAiContextCustomTemplateBase = 100;
+constexpr size_t kContextTemplateCount = 3;
 
 enum class LLMProvider { OpenAI = 0, Gemini, Claude, Copilot, ProviderCount };
 constexpr std::array<LLMProvider, 3> kEnabledProviders = {
@@ -74,6 +85,16 @@ enum class PromptDetailLevel {
   Concise = 0,
   Standard = 1,
   Detailed = 2,
+};
+
+enum class PromptSectionType {
+  MandatorySystem,
+  Identity,
+  Rules,
+  Memory,
+  System,
+  Assignment,
+  UserRequest,
 };
 
 enum PromptScenarioFlags : unsigned int {
@@ -132,10 +153,33 @@ enum class SelectionAction {
 
 struct SelectionContext {
   HWND scintilla = nullptr;
+  UINT_PTR bufferId = 0;
   Sci_Position start = 0;
   Sci_Position end = 0;
   int codePage = 0;
   std::wstring text;
+};
+
+struct AiRequest {
+  LLMProvider provider = LLMProvider::OpenAI;
+  std::wstring model;
+  std::wstring userPrompt;
+  std::wstring effectivePrompt;
+  bool replaceSelection = false;
+  SelectionContext selection;
+};
+
+struct AiRequestResult {
+  std::wstring response;
+  bool replaceSelection = false;
+  SelectionContext selection;
+};
+
+struct ContextMenuTemplate {
+  bool enabled = false;
+  bool replaceSelection = false;
+  std::wstring name;
+  std::wstring promptTemplate;
 };
 
 struct AIAssistantConfig {
@@ -143,6 +187,11 @@ struct AIAssistantConfig {
   std::wstring geminiKey;
   std::wstring claudeKey;
   std::wstring customPromptInstructions;
+  std::wstring identityTemplate;
+  std::wstring rulesTemplate;
+  std::wstring assignmentTemplate;
+  std::wstring memoryContent;
+  std::array<ContextMenuTemplate, kContextTemplateCount> contextTemplates;
   LLMProvider defaultProvider = LLMProvider::OpenAI;
   UiLanguagePreference uiLanguagePreference = UiLanguagePreference::FollowNotepad;
   PromptResponseLanguage responseLanguage =
@@ -156,6 +205,25 @@ struct AIAssistantConfig {
   bool outputPreserveStyle = true;
   bool outputMentionRisks = false;
   bool requireCtrlEnterToSend = false;
+  bool identityEnabled = true;
+  bool rulesEnabled = true;
+  bool assignmentTemplateEnabled = true;
+  bool memoryEnabled = false;
+  int displayScalePercent = kDefaultDisplayScalePercent;
+};
+
+struct PromptSection {
+  PromptSectionType type;
+  const wchar_t *label;
+  std::wstring content;
+  bool included = true;
+};
+
+struct PromptEstimate {
+  std::wstring label;
+  size_t chars = 0;
+  size_t estimatedTokens = 0;
+  bool included = false;
 };
 
 HINSTANCE g_hInst = nullptr;
@@ -183,6 +251,9 @@ std::array<HWND, 2> g_scintillaWindows{};
 HWND g_inputEdit = nullptr;
 WNDPROC g_originalInputEditProc = nullptr;
 UiLanguage g_uiLanguage = UiLanguage::English;
+bool g_requestInProgress = false;
+size_t g_pendingMessageIndex = 0;
+int g_waitingAnimationFrame = 0;
 
 const wchar_t *kOpenAIKeyName = L"openai_apikey";
 const wchar_t *kGeminiKeyName = L"gemini_apikey";
@@ -200,6 +271,32 @@ const wchar_t *kOutputPreserveStyleName = L"prompt_output_preserve_style";
 const wchar_t *kOutputMentionRisksName = L"prompt_output_mention_risks";
 const wchar_t *kCustomPromptInstructionsName = L"prompt_custom_instructions";
 const wchar_t *kRequireCtrlEnterName = L"require_ctrl_enter";
+const wchar_t *kIdentityEnabledName = L"prompt_identity_enabled";
+const wchar_t *kIdentityTemplateName = L"prompt_identity_template";
+const wchar_t *kRulesEnabledName = L"prompt_rules_enabled";
+const wchar_t *kRulesTemplateName = L"prompt_rules_template";
+const wchar_t *kAssignmentTemplateEnabledName =
+    L"prompt_assignment_template_enabled";
+const wchar_t *kAssignmentTemplateName = L"prompt_assignment_template";
+const wchar_t *kDisplayScalePercentName = L"display_scale_percent";
+const wchar_t *kMemoryEnabledName = L"memory_enabled";
+const wchar_t *kMemoryContentName = L"memory_content";
+const wchar_t *kContextTemplateEnabledNames[kContextTemplateCount] = {
+    L"context_template_1_enabled",
+    L"context_template_2_enabled",
+    L"context_template_3_enabled"};
+const wchar_t *kContextTemplateReplaceNames[kContextTemplateCount] = {
+    L"context_template_1_replace",
+    L"context_template_2_replace",
+    L"context_template_3_replace"};
+const wchar_t *kContextTemplateNameNames[kContextTemplateCount] = {
+    L"context_template_1_name",
+    L"context_template_2_name",
+    L"context_template_3_name"};
+const wchar_t *kContextTemplatePromptNames[kContextTemplateCount] = {
+    L"context_template_1_prompt",
+    L"context_template_2_prompt",
+    L"context_template_3_prompt"};
 
 void cmdTogglePanel();
 void cmdExplainSelection();
@@ -208,10 +305,21 @@ void cmdAddComments();
 void cmdFixCode();
 void cmdSettings();
 void commandMenuInit();
+std::wstring getDefaultIdentityTemplate();
+std::wstring getDefaultRulesTemplate();
+std::wstring getDefaultAssignmentTemplate();
+std::wstring getDefaultContextTemplateName(size_t index);
+std::wstring getDefaultContextTemplatePrompt(size_t index);
 INT_PTR CALLBACK PanelDlgProc(HWND hwnd, UINT message, WPARAM wParam,
                               LPARAM lParam);
 INT_PTR CALLBACK SettingsDlgProc(HWND hwnd, UINT message, WPARAM wParam,
                                  LPARAM lParam);
+INT_PTR CALLBACK PromptSectionsDlgProc(HWND hwnd, UINT message, WPARAM wParam,
+                                       LPARAM lParam);
+INT_PTR CALLBACK MemoryStorageDlgProc(HWND hwnd, UINT message, WPARAM wParam,
+                                      LPARAM lParam);
+INT_PTR CALLBACK ContextTemplatesDlgProc(HWND hwnd, UINT message, WPARAM wParam,
+                                         LPARAM lParam);
 LRESULT CALLBACK ScintillaSubclassProc(HWND hwnd, UINT message, WPARAM wParam,
                                        LPARAM lParam);
 LRESULT CALLBACK InputEditSubclassProc(HWND hwnd, UINT message, WPARAM wParam,
@@ -501,6 +609,17 @@ PromptDetailLevel sanitizePromptDetailLevel(int rawValue) {
   default:
     return PromptDetailLevel::Standard;
   }
+}
+
+int clampDisplayScalePercent(int value) {
+  return std::clamp(value, kMinDisplayScalePercent, kMaxDisplayScalePercent);
+}
+
+int fontSizeFromDisplayScale(int displayScalePercent) {
+  return std::clamp(
+      MulDiv(kDefaultFontSize, clampDisplayScalePercent(displayScalePercent),
+             100),
+      kMinFontSize, kMaxFontSize);
 }
 
 int providerToComboIndex(LLMProvider provider) {
@@ -896,6 +1015,22 @@ std::wstring trimWhitespace(const std::wstring &value) {
   return value.substr(start, end - start);
 }
 
+std::wstring getControlText(HWND hwnd) {
+  if (!hwnd) {
+    return L"";
+  }
+
+  const int length = ::GetWindowTextLengthW(hwnd);
+  if (length <= 0) {
+    return L"";
+  }
+
+  std::wstring value(static_cast<size_t>(length) + 1, L'\0');
+  ::GetWindowTextW(hwnd, value.data(), length + 1);
+  value.resize(static_cast<size_t>(length));
+  return value;
+}
+
 std::wstring toLowerAscii(const std::wstring &value) {
   std::wstring lower = value;
   std::transform(lower.begin(), lower.end(), lower.begin(),
@@ -1097,10 +1232,25 @@ void cleanupSecurePreferenceBlobs() {
       kOutputPreserveStyleName,
       kOutputMentionRisksName,
       kCustomPromptInstructionsName,
-      kRequireCtrlEnterName};
+      kRequireCtrlEnterName,
+      kIdentityEnabledName,
+      kIdentityTemplateName,
+      kRulesEnabledName,
+      kRulesTemplateName,
+      kAssignmentTemplateEnabledName,
+      kAssignmentTemplateName,
+      kDisplayScalePercentName,
+      kMemoryEnabledName,
+      kMemoryContentName};
 
   for (const wchar_t *keyName : preferenceKeys) {
     SecureStorage::deleteApiKey(keyName);
+  }
+  for (size_t i = 0; i < kContextTemplateCount; ++i) {
+    SecureStorage::deleteApiKey(kContextTemplateEnabledNames[i]);
+    SecureStorage::deleteApiKey(kContextTemplateReplaceNames[i]);
+    SecureStorage::deleteApiKey(kContextTemplateNameNames[i]);
+    SecureStorage::deleteApiKey(kContextTemplatePromptNames[i]);
   }
 }
 
@@ -1119,6 +1269,40 @@ void loadPreferencesFromSettings(AIAssistantConfig &config) {
       config.outputMentionRisks);
   config.customPromptInstructions =
       SettingsStorage::loadString(kCustomPromptInstructionsName);
+  config.identityEnabled =
+      parseStoredBool(SettingsStorage::loadString(kIdentityEnabledName),
+                      config.identityEnabled);
+  config.rulesEnabled = parseStoredBool(
+      SettingsStorage::loadString(kRulesEnabledName), config.rulesEnabled);
+  config.assignmentTemplateEnabled = parseStoredBool(
+      SettingsStorage::loadString(kAssignmentTemplateEnabledName),
+      config.assignmentTemplateEnabled);
+  config.identityTemplate = SettingsStorage::loadString(kIdentityTemplateName);
+  config.rulesTemplate = SettingsStorage::loadString(kRulesTemplateName);
+  config.assignmentTemplate =
+      SettingsStorage::loadString(kAssignmentTemplateName);
+  config.displayScalePercent = clampDisplayScalePercent(parseStoredInt(
+      SettingsStorage::loadString(kDisplayScalePercentName),
+      config.displayScalePercent));
+  config.memoryEnabled =
+      parseStoredBool(SettingsStorage::loadString(kMemoryEnabledName),
+                      config.memoryEnabled);
+  config.memoryContent = SettingsStorage::loadString(kMemoryContentName);
+  if (config.memoryContent.size() > kMaxMemoryChars) {
+    config.memoryContent.resize(kMaxMemoryChars);
+  }
+  for (size_t i = 0; i < kContextTemplateCount; ++i) {
+    config.contextTemplates[i].enabled = parseStoredBool(
+        SettingsStorage::loadString(kContextTemplateEnabledNames[i]),
+        config.contextTemplates[i].enabled);
+    config.contextTemplates[i].replaceSelection = parseStoredBool(
+        SettingsStorage::loadString(kContextTemplateReplaceNames[i]),
+        config.contextTemplates[i].replaceSelection);
+    config.contextTemplates[i].name =
+        SettingsStorage::loadString(kContextTemplateNameNames[i]);
+    config.contextTemplates[i].promptTemplate =
+        SettingsStorage::loadString(kContextTemplatePromptNames[i]);
+  }
 
   config.responseLanguage = sanitizePromptResponseLanguage(parseStoredInt(
       SettingsStorage::loadString(kResponseLanguageName),
@@ -1154,6 +1338,33 @@ void loadPreferencesFromLegacySecureStorage(AIAssistantConfig &config) {
       SecureStorage::loadLegacyValue(kOutputMentionRisksName) == L"1";
   config.customPromptInstructions =
       SecureStorage::loadLegacyValue(kCustomPromptInstructionsName);
+  config.identityEnabled =
+      SecureStorage::loadLegacyValue(kIdentityEnabledName) != L"0";
+  config.rulesEnabled = SecureStorage::loadLegacyValue(kRulesEnabledName) != L"0";
+  config.assignmentTemplateEnabled =
+      SecureStorage::loadLegacyValue(kAssignmentTemplateEnabledName) != L"0";
+  config.identityTemplate = SecureStorage::loadLegacyValue(kIdentityTemplateName);
+  config.rulesTemplate = SecureStorage::loadLegacyValue(kRulesTemplateName);
+  config.assignmentTemplate =
+      SecureStorage::loadLegacyValue(kAssignmentTemplateName);
+  config.displayScalePercent = clampDisplayScalePercent(parseStoredInt(
+      SecureStorage::loadLegacyValue(kDisplayScalePercentName),
+      config.displayScalePercent));
+  config.memoryEnabled = SecureStorage::loadLegacyValue(kMemoryEnabledName) == L"1";
+  config.memoryContent = SecureStorage::loadLegacyValue(kMemoryContentName);
+  if (config.memoryContent.size() > kMaxMemoryChars) {
+    config.memoryContent.resize(kMaxMemoryChars);
+  }
+  for (size_t i = 0; i < kContextTemplateCount; ++i) {
+    config.contextTemplates[i].enabled =
+        SecureStorage::loadLegacyValue(kContextTemplateEnabledNames[i]) == L"1";
+    config.contextTemplates[i].replaceSelection =
+        SecureStorage::loadLegacyValue(kContextTemplateReplaceNames[i]) == L"1";
+    config.contextTemplates[i].name =
+        SecureStorage::loadLegacyValue(kContextTemplateNameNames[i]);
+    config.contextTemplates[i].promptTemplate =
+        SecureStorage::loadLegacyValue(kContextTemplatePromptNames[i]);
+  }
 
   config.responseLanguage = sanitizePromptResponseLanguage(parseStoredInt(
       SecureStorage::loadLegacyValue(kResponseLanguageName),
@@ -1211,6 +1422,46 @@ void savePreferencesToSettings(const AIAssistantConfig &config) {
                               config.customPromptInstructions);
   SettingsStorage::saveString(kRequireCtrlEnterName,
                               config.requireCtrlEnterToSend ? L"1" : L"0");
+  SettingsStorage::saveString(kIdentityEnabledName,
+                              config.identityEnabled ? L"1" : L"0");
+  SettingsStorage::saveString(kIdentityTemplateName,
+                              config.identityTemplate.empty()
+                                  ? getDefaultIdentityTemplate()
+                                  : config.identityTemplate);
+  SettingsStorage::saveString(kRulesEnabledName,
+                              config.rulesEnabled ? L"1" : L"0");
+  SettingsStorage::saveString(kRulesTemplateName,
+                              config.rulesTemplate.empty()
+                                  ? getDefaultRulesTemplate()
+                                  : config.rulesTemplate);
+  SettingsStorage::saveString(kAssignmentTemplateEnabledName,
+                              config.assignmentTemplateEnabled ? L"1" : L"0");
+  SettingsStorage::saveString(kAssignmentTemplateName,
+                              config.assignmentTemplate.empty()
+                                  ? getDefaultAssignmentTemplate()
+                                  : config.assignmentTemplate);
+  SettingsStorage::saveString(kDisplayScalePercentName,
+                              std::to_wstring(clampDisplayScalePercent(
+                                  config.displayScalePercent)));
+  SettingsStorage::saveString(kMemoryEnabledName,
+                              config.memoryEnabled ? L"1" : L"0");
+  std::wstring memoryContent = config.memoryContent;
+  if (memoryContent.size() > kMaxMemoryChars) {
+    memoryContent.resize(kMaxMemoryChars);
+  }
+  SettingsStorage::saveString(kMemoryContentName, memoryContent);
+  for (size_t i = 0; i < kContextTemplateCount; ++i) {
+    SettingsStorage::saveString(kContextTemplateEnabledNames[i],
+                                config.contextTemplates[i].enabled ? L"1"
+                                                                   : L"0");
+    SettingsStorage::saveString(
+        kContextTemplateReplaceNames[i],
+        config.contextTemplates[i].replaceSelection ? L"1" : L"0");
+    SettingsStorage::saveString(kContextTemplateNameNames[i],
+                                config.contextTemplates[i].name);
+    SettingsStorage::saveString(kContextTemplatePromptNames[i],
+                                config.contextTemplates[i].promptTemplate);
+  }
 }
 
 void addMessage(bool isUser, const std::wstring &content) {
@@ -1227,6 +1478,32 @@ void addMessage(bool isUser, const std::wstring &content) {
   }
   msg.timestamp = timeText;
   g_chatHistory.push_back(msg);
+}
+
+void updateMessageContent(size_t index, const std::wstring &content) {
+  if (index >= g_chatHistory.size()) {
+    return;
+  }
+  g_chatHistory[index].content = content;
+}
+
+std::wstring getWaitingAnimationText() {
+  const int dotCount = g_waitingAnimationFrame % 4;
+  std::wstring text = L"Waiting for AI response";
+  for (int i = 0; i < dotCount; ++i) {
+    text += L".";
+  }
+  return text;
+}
+
+void setRequestControlsEnabled(bool enabled) {
+  if (!g_panel) {
+    return;
+  }
+
+  ::EnableWindow(::GetDlgItem(g_panel, IDC_AI_SEND_BUTTON), enabled);
+  ::EnableWindow(::GetDlgItem(g_panel, IDC_AI_PROVIDER_COMBO), enabled);
+  ::EnableWindow(::GetDlgItem(g_panel, IDC_AI_MODEL_COMBO), enabled);
 }
 
 void updateChatDisplay() {
@@ -1274,6 +1551,37 @@ void loadConfig() {
       sanitizePromptPreset(static_cast<int>(g_config.promptPreset));
   g_config.detailLevel =
       sanitizePromptDetailLevel(static_cast<int>(g_config.detailLevel));
+  g_config.displayScalePercent =
+      clampDisplayScalePercent(g_config.displayScalePercent);
+  g_fontSize = fontSizeFromDisplayScale(g_config.displayScalePercent);
+
+  bool savedDefaultTemplates = false;
+  if (g_config.identityTemplate.empty()) {
+    g_config.identityTemplate = getDefaultIdentityTemplate();
+    savedDefaultTemplates = true;
+  }
+  if (g_config.rulesTemplate.empty()) {
+    g_config.rulesTemplate = getDefaultRulesTemplate();
+    savedDefaultTemplates = true;
+  }
+  if (g_config.assignmentTemplate.empty()) {
+    g_config.assignmentTemplate = getDefaultAssignmentTemplate();
+    savedDefaultTemplates = true;
+  }
+  for (size_t i = 0; i < kContextTemplateCount; ++i) {
+    if (g_config.contextTemplates[i].name.empty()) {
+      g_config.contextTemplates[i].name = getDefaultContextTemplateName(i);
+      savedDefaultTemplates = true;
+    }
+    if (g_config.contextTemplates[i].promptTemplate.empty()) {
+      g_config.contextTemplates[i].promptTemplate =
+          getDefaultContextTemplatePrompt(i);
+      savedDefaultTemplates = true;
+    }
+  }
+  if (savedDefaultTemplates) {
+    savePreferencesToSettings(g_config);
+  }
 }
 
 void saveConfig(const AIAssistantConfig &config) {
@@ -1295,6 +1603,9 @@ void saveConfig(const AIAssistantConfig &config) {
       sanitizePromptPreset(static_cast<int>(g_config.promptPreset));
   g_config.detailLevel =
       sanitizePromptDetailLevel(static_cast<int>(g_config.detailLevel));
+  g_config.displayScalePercent =
+      clampDisplayScalePercent(g_config.displayScalePercent);
+  g_fontSize = fontSizeFromDisplayScale(g_config.displayScalePercent);
 }
 
 void loadCopilotToken() {
@@ -1370,6 +1681,8 @@ SelectionContext getCurrentSelectionContext() {
       ::SendMessage(context.scintilla, SCI_GETSELECTIONSTART, 0, 0));
   context.end = static_cast<Sci_Position>(
       ::SendMessage(context.scintilla, SCI_GETSELECTIONEND, 0, 0));
+  context.bufferId = static_cast<UINT_PTR>(
+      ::SendMessageW(g_nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0));
   if (context.start == context.end) {
     context.scintilla = nullptr;
     return context;
@@ -1403,6 +1716,12 @@ std::vector<char> wideToEditorText(const std::wstring &text, int codePage) {
 bool replaceSelectionText(const SelectionContext &context,
                           const std::wstring &replacement) {
   if (!context.scintilla || replacement.empty()) {
+    return false;
+  }
+
+  const UINT_PTR currentBufferId = static_cast<UINT_PTR>(
+      ::SendMessageW(g_nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0));
+  if (context.bufferId != 0 && currentBufferId != context.bufferId) {
     return false;
   }
 
@@ -1699,6 +2018,18 @@ void applyLocalizedSettingsText(HWND hwnd) {
                    g_uiLanguage == UiLanguage::Chinese
                        ? L"\u63D0\u793A\u8A5E\u9810\u89BD"
                        : L"Prompt Preview");
+  ::SetWindowTextW(::GetDlgItem(hwnd, IDC_MEMORY_STORAGE_BUTTON),
+                   g_uiLanguage == UiLanguage::Chinese
+                       ? L"\u8A18\u61B6\u5132\u5B58..."
+                       : L"Memory...");
+  ::SetWindowTextW(::GetDlgItem(hwnd, IDC_CONTEXT_TEMPLATES_BUTTON),
+                   g_uiLanguage == UiLanguage::Chinese
+                       ? L"\u53F3\u9375\u6A23\u677F..."
+                       : L"Context Templates...");
+  ::SetWindowTextW(::GetDlgItem(hwnd, IDC_PROMPT_SECTIONS_BUTTON),
+                   g_uiLanguage == UiLanguage::Chinese
+                       ? L"\u63D0\u793A\u8A5E\u5340\u584A..."
+                       : L"Prompt Sections...");
   ::SetWindowTextW(::GetDlgItem(hwnd, IDC_TEST_CONNECTION_BTN),
                    tr(TextId::SettingsTestConnection));
   ::SetWindowTextW(::GetDlgItem(hwnd, IDOK), tr(TextId::SettingsOk));
@@ -1883,57 +2214,299 @@ std::wstring getPromptDetailInstruction(const AIAssistantConfig &config) {
   }
 }
 
+std::wstring getDefaultIdentityTemplate() {
+  return L"NppAIAssistant is a native Notepad++ plugin for explicit, "
+         L"editor-side AI assistance.\n"
+         L"Plugin: {{PLUGIN_NAME}}\n"
+         L"Provider: {{PROVIDER}}\n"
+         L"Model: {{MODEL}}\n"
+         L"Reply language: {{LANGUAGE}}\n"
+         L"Encoding preference: {{ENCODING}}\n"
+         L"Line endings: {{LINE_ENDING}}\n"
+         L"Timestamp: {{TIMESTAMP}}\n"
+         L"The assistant should keep requests transparent, local-first, and "
+         L"single-turn unless the user explicitly enables a visible context "
+         L"section.";
+}
+
+std::wstring getDefaultRulesTemplate() {
+  return L"- Preserve the current document's intent, naming, formatting, and "
+         L"project style where possible.\n"
+         L"- Prefer the smallest correct change over broad rewrites.\n"
+         L"- Do not invent hidden memory or rely on earlier conversation.\n"
+         L"- Do not expose secrets, access tokens, private keys, or unrelated "
+         L"private paths.\n"
+         L"- If requirements conflict or risk is material, state the conflict "
+         L"briefly before proceeding.";
+}
+
+std::wstring getDefaultAssignmentTemplate() {
+  return L"Read the user request and any selected text as the complete task "
+         L"context. Return directly useful output for Notepad++ editing. When "
+         L"the request asks for code transformation, keep the result ready to "
+         L"paste back into the editor.";
+}
+
+std::wstring getDefaultContextTemplateName(size_t index) {
+  switch (index) {
+  case 0:
+    return L"Review Selection";
+  case 1:
+    return L"Rewrite Clearly";
+  case 2:
+    return L"Summarize";
+  default:
+    return L"Custom Template";
+  }
+}
+
+std::wstring getDefaultContextTemplatePrompt(size_t index) {
+  switch (index) {
+  case 0:
+    return L"Review this selected text. Identify issues, risks, and the "
+           L"smallest useful improvement:";
+  case 1:
+    return L"Rewrite this selected text for clarity while preserving meaning:";
+  case 2:
+    return L"Summarize this selected text into concise actionable points:";
+  default:
+    return L"Apply this custom instruction to the selected text:";
+  }
+}
+
+std::wstring getCurrentTimestampText() {
+  time_t now = time(nullptr);
+  tm localTime{};
+  wchar_t timeText[64] = L"";
+  if (localtime_s(&localTime, &now) == 0) {
+    wcsftime(timeText, 64, L"%Y-%m-%d %H:%M:%S", &localTime);
+  }
+  return timeText;
+}
+
+void replaceAll(std::wstring &value, const std::wstring &token,
+                const std::wstring &replacement) {
+  if (token.empty()) {
+    return;
+  }
+
+  size_t pos = 0;
+  while ((pos = value.find(token, pos)) != std::wstring::npos) {
+    value.replace(pos, token.size(), replacement);
+    pos += replacement.size();
+  }
+}
+
+std::wstring resolvePromptTemplateTokens(const AIAssistantConfig &config,
+                                         const std::wstring &templateText) {
+  std::wstring resolved = templateText;
+  replaceAll(resolved, L"{{PLUGIN_NAME}}", kPluginName);
+  replaceAll(resolved, L"{{PROVIDER}}", getProviderName(g_currentProvider));
+  replaceAll(resolved, L"{{MODEL}}",
+             g_currentModel.empty() ? L"(not selected)" : g_currentModel);
+  replaceAll(resolved, L"{{LANGUAGE}}",
+             getPromptResponseLanguageInstruction(config));
+  replaceAll(resolved, L"{{ENCODING}}", getPromptEncodingInstruction(config));
+  replaceAll(resolved, L"{{LINE_ENDING}}", getPromptLineEndingInstruction());
+  replaceAll(resolved, L"{{TIMESTAMP}}", getCurrentTimestampText());
+  return resolved;
+}
+
+std::array<const wchar_t *, 7> getPromptTemplateTokens() {
+  return {L"{{PLUGIN_NAME}}", L"{{PROVIDER}}", L"{{MODEL}}", L"{{LANGUAGE}}",
+          L"{{ENCODING}}", L"{{LINE_ENDING}}", L"{{TIMESTAMP}}"};
+}
+
+bool containsUnknownPromptToken(const std::wstring &value) {
+  return value.find(L"{{") != std::wstring::npos &&
+         value.find(L"}}") != std::wstring::npos;
+}
+
+size_t estimateTokensForText(const std::wstring &value) {
+  size_t asciiLike = 0;
+  size_t cjkLike = 0;
+
+  for (wchar_t ch : value) {
+    if (ch >= 0x4E00 && ch <= 0x9FFF) {
+      ++cjkLike;
+    } else if (!iswspace(ch)) {
+      ++asciiLike;
+    }
+  }
+
+  const size_t estimate = ((asciiLike + 3) / 4) + cjkLike;
+  return value.empty() ? 0 : std::max<size_t>(1, estimate);
+}
+
+std::vector<PromptSection>
+buildPromptSectionsForConfig(const AIAssistantConfig &config,
+                             const std::wstring &userPrompt,
+                             bool forceCodeOnlyOutput = false) {
+  std::vector<PromptSection> sections;
+
+  std::wstringstream mandatory;
+  mandatory << L"- Treat this as a fully independent single-turn request. Do "
+               L"not rely on prior conversation.\n";
+  mandatory << L"- Work only from the information in this message.\n";
+  mandatory << L"- The visible prompt sections below are the complete context "
+               L"being sent.\n";
+  mandatory << L"- Do not assume hidden memory. Use memory only when a visible "
+               L"Memory section is present.\n";
+  sections.push_back(
+      {PromptSectionType::MandatorySystem, L"Mandatory System",
+       mandatory.str(), true});
+
+  const std::wstring identityTemplate =
+      config.identityTemplate.empty() ? getDefaultIdentityTemplate()
+                                      : config.identityTemplate;
+  sections.push_back({PromptSectionType::Identity, L"Identity",
+                      resolvePromptTemplateTokens(config, identityTemplate),
+                      config.identityEnabled});
+
+  const std::wstring rulesTemplate =
+      config.rulesTemplate.empty() ? getDefaultRulesTemplate()
+                                   : config.rulesTemplate;
+  sections.push_back({PromptSectionType::Rules, L"Rules",
+                      resolvePromptTemplateTokens(config, rulesTemplate),
+                      config.rulesEnabled});
+
+  std::wstringstream memory;
+  const std::wstring trimmedMemory = trimWhitespace(config.memoryContent);
+  if (!trimmedMemory.empty()) {
+    memory << L"Memory is explicitly enabled and visible for this request.\n";
+    memory << trimmedMemory;
+  }
+  sections.push_back({PromptSectionType::Memory, L"Memory", memory.str(),
+                      config.memoryEnabled && !trimmedMemory.empty()});
+
+  std::wstringstream system;
+  system << L"- Reply language: " << getPromptResponseLanguageInstruction(config)
+         << L".\n";
+  system << L"- Preferred encoding for generated code/text: "
+         << getPromptEncodingInstruction(config) << L".\n";
+  system << L"- Preferred line ending style: " << getPromptLineEndingInstruction()
+         << L".\n";
+  system << L"- " << getPromptDetailInstruction(config) << L"\n";
+  system << L"- The answer may be pasted back into an editor or code file.\n";
+
+  if (config.scenarioFlags != 0) {
+    system << L"\nScenario modules:\n";
+    if ((config.scenarioFlags & ScenarioExplainCode) != 0) {
+      system << L"- Be ready to explain existing code, behavior, "
+                L"dependencies, or editor output.\n";
+    }
+    if ((config.scenarioFlags & ScenarioFixBugs) != 0) {
+      system << L"- Prioritize identifying root causes and proposing the "
+                L"smallest correct fix.\n";
+    }
+    if ((config.scenarioFlags & ScenarioRefactor) != 0) {
+      system << L"- Favor maintainable refactors that preserve behavior unless "
+                L"asked otherwise.\n";
+    }
+    if ((config.scenarioFlags & ScenarioGenerateTests) != 0) {
+      system << L"- When useful, include or suggest focused automated tests.\n";
+    }
+    if ((config.scenarioFlags & ScenarioWriteDocs) != 0) {
+      system << L"- When useful, produce clear developer-facing documentation "
+                L"or comments.\n";
+    }
+  }
+
+  system << L"\nOutput rules:\n";
+  if (config.outputPreserveStyle) {
+    system << L"- Preserve existing naming, formatting, and project style where "
+              L"possible.\n";
+  }
+  if (config.outputMentionRisks) {
+    system << L"- Briefly call out important risks, assumptions, or edge "
+              L"cases.\n";
+  }
+  if (forceCodeOnlyOutput) {
+    system << L"- Return only the final replacement code or text. Do not "
+              L"include markdown fences or explanation.\n";
+  } else if (config.outputCodeOnly) {
+    system << L"- When the task is code generation or code transformation, "
+              L"prefer directly usable output and keep explanation minimal.\n";
+  }
+  sections.push_back({PromptSectionType::System, L"System", system.str(), true});
+
+  const std::wstring assignmentTemplate =
+      config.assignmentTemplate.empty() ? getDefaultAssignmentTemplate()
+                                        : config.assignmentTemplate;
+  sections.push_back({PromptSectionType::Assignment, L"Assignment",
+                      resolvePromptTemplateTokens(config, assignmentTemplate),
+                      config.assignmentTemplateEnabled});
+
+  sections.push_back(
+      {PromptSectionType::UserRequest, L"User Request", userPrompt, true});
+
+  return sections;
+}
+
+std::wstring renderPromptSections(const std::vector<PromptSection> &sections) {
+  std::wstringstream prompt;
+  bool first = true;
+  for (const PromptSection &section : sections) {
+    if (!section.included) {
+      continue;
+    }
+    if (!first) {
+      prompt << L"\n\n";
+    }
+    prompt << L"[" << section.label << L"]\n";
+    prompt << section.content;
+    first = false;
+  }
+  return prompt.str();
+}
+
+std::vector<PromptEstimate>
+estimatePromptSections(const std::vector<PromptSection> &sections) {
+  std::vector<PromptEstimate> estimates;
+  for (const PromptSection &section : sections) {
+    const std::wstring rendered = std::wstring(L"[") + section.label + L"]\n" +
+                                  section.content;
+    estimates.push_back({section.label, rendered.size(),
+                         estimateTokensForText(rendered), section.included});
+  }
+  return estimates;
+}
+
+std::wstring buildPromptEstimateSummary(
+    const std::vector<PromptSection> &sections) {
+  const std::vector<PromptEstimate> estimates = estimatePromptSections(sections);
+  size_t total = 0;
+  std::wstringstream summary;
+  summary << L"[Estimated Tokens]\n";
+  for (const PromptEstimate &estimate : estimates) {
+    if (estimate.included) {
+      total += estimate.estimatedTokens;
+    }
+    summary << L"- " << estimate.label << L": ";
+    summary << (estimate.included ? std::to_wstring(estimate.estimatedTokens)
+                                  : L"off");
+    summary << L" estimated tokens (" << estimate.chars << L" chars)\n";
+  }
+  summary << L"- Total: " << total << L" estimated tokens\n";
+
+  bool hasUnknownToken = false;
+  for (const PromptSection &section : sections) {
+    if (section.included && containsUnknownPromptToken(section.content)) {
+      hasUnknownToken = true;
+      break;
+    }
+  }
+  if (hasUnknownToken) {
+    summary << L"- Warning: unresolved template token remains visible.\n";
+  }
+  return summary.str();
+}
+
 std::wstring buildEffectivePromptForConfig(const AIAssistantConfig &config,
                                            const std::wstring &userPrompt,
                                            bool forceCodeOnlyOutput = false) {
-  std::wstringstream prompt;
-  prompt << L"[Single-turn System]\n";
-  prompt << L"- Treat this as a fully independent single-turn request. Do not rely on prior conversation.\n";
-  prompt << L"- Work only from the information in this message.\n";
-  prompt << L"- Reply language: "
-         << getPromptResponseLanguageInstruction(config) << L".\n";
-  prompt << L"- Preferred encoding for generated code/text: "
-         << getPromptEncodingInstruction(config) << L".\n";
-  prompt << L"- Preferred line ending style: " << getPromptLineEndingInstruction()
-         << L".\n";
-  prompt << L"- " << getPromptDetailInstruction(config) << L"\n";
-  prompt << L"- The answer may be pasted back into an editor or code file.\n";
-
-  if (config.scenarioFlags != 0) {
-    prompt << L"\n[Scenario Modules]\n";
-    if ((config.scenarioFlags & ScenarioExplainCode) != 0) {
-      prompt << L"- Be ready to explain existing code, behavior, dependencies, or editor output.\n";
-    }
-    if ((config.scenarioFlags & ScenarioFixBugs) != 0) {
-      prompt << L"- Prioritize identifying root causes and proposing the smallest correct fix.\n";
-    }
-    if ((config.scenarioFlags & ScenarioRefactor) != 0) {
-      prompt << L"- Favor maintainable refactors that preserve behavior unless asked otherwise.\n";
-    }
-    if ((config.scenarioFlags & ScenarioGenerateTests) != 0) {
-      prompt << L"- When useful, include or suggest focused automated tests.\n";
-    }
-    if ((config.scenarioFlags & ScenarioWriteDocs) != 0) {
-      prompt << L"- When useful, produce clear developer-facing documentation or comments.\n";
-    }
-  }
-
-  prompt << L"\n[Output Rules]\n";
-  if (config.outputPreserveStyle) {
-    prompt << L"- Preserve existing naming, formatting, and project style where possible.\n";
-  }
-  if (config.outputMentionRisks) {
-    prompt << L"- Briefly call out important risks, assumptions, or edge cases.\n";
-  }
-  if (forceCodeOnlyOutput) {
-    prompt << L"- Return only the final replacement code or text. Do not include markdown fences or explanation.\n";
-  } else if (config.outputCodeOnly) {
-    prompt << L"- When the task is code generation or code transformation, prefer directly usable output and keep explanation minimal.\n";
-  }
-
-  prompt << L"\n[User Request]\n";
-  prompt << userPrompt;
-  return prompt.str();
+  return renderPromptSections(
+      buildPromptSectionsForConfig(config, userPrompt, forceCodeOnlyOutput));
 }
 
 std::wstring buildEffectivePrompt(const std::wstring &userPrompt,
@@ -1956,8 +2529,11 @@ void updatePromptPreviewInSettings(HWND hwnd, const AIAssistantConfig &config) {
   if (!previewEdit) {
     return;
   }
-  std::wstring preview =
-      buildEffectivePromptForConfig(config, getPromptPreviewUserRequest(config));
+  const std::vector<PromptSection> sections =
+      buildPromptSectionsForConfig(config, getPromptPreviewUserRequest(config));
+  std::wstring preview = buildPromptEstimateSummary(sections);
+  preview += L"\r\n";
+  preview += renderPromptSections(sections);
   ::SetWindowTextW(previewEdit, preview.c_str());
 }
 void initPanelControls() {
@@ -1982,15 +2558,16 @@ void initPanelControls() {
   applyLocalizedPanelText();
 }
 
-LLMResponse callCurrentProvider(const std::wstring &apiKey,
-                                const std::wstring &prompt) {
-  switch (g_currentProvider) {
+LLMResponse callProvider(LLMProvider provider, const std::wstring &apiKey,
+                         const std::wstring &prompt,
+                         const std::wstring &model) {
+  switch (provider) {
   case LLMProvider::OpenAI:
-    return LLMApiClient::callOpenAI(apiKey, prompt, g_currentModel);
+    return LLMApiClient::callOpenAI(apiKey, prompt, model);
   case LLMProvider::Gemini:
-    return LLMApiClient::callGemini(apiKey, prompt, g_currentModel);
+    return LLMApiClient::callGemini(apiKey, prompt, model);
   case LLMProvider::Claude:
-    return LLMApiClient::callClaude(apiKey, prompt, g_currentModel);
+    return LLMApiClient::callClaude(apiKey, prompt, model);
   default: {
     LLMResponse unsupported;
     unsupported.errorMessage = L"Unsupported provider";
@@ -1999,27 +2576,28 @@ LLMResponse callCurrentProvider(const std::wstring &apiKey,
   }
 }
 
-std::wstring invokeProvider(const std::wstring &prompt) {
-  if (g_currentProvider == LLMProvider::Copilot) {
+std::wstring invokeProvider(LLMProvider provider, const std::wstring &model,
+                            const std::wstring &prompt) {
+  if (provider == LLMProvider::Copilot) {
     return L"[Notice] GitHub Copilot is currently paused in this build.";
   }
 
-  std::wstring apiKey = getProviderApiKey(g_currentProvider);
+  std::wstring apiKey = getProviderApiKey(provider);
 
   if (apiKey.empty()) {
-    return L"[Error] API key not configured for " + getProviderName(g_currentProvider) +
+    return L"[Error] API key not configured for " + getProviderName(provider) +
            L". Open Settings to configure it.";
   }
 
-  if (g_currentModel.empty()) {
-    return L"[Error] No model is available for " + getProviderName(g_currentProvider) +
+  if (model.empty()) {
+    return L"[Error] No model is available for " + getProviderName(provider) +
            L". Check your API key and refresh the model list from Settings.";
   }
 
-  LLMResponse response = callCurrentProvider(apiKey, prompt);
+  LLMResponse response = callProvider(provider, apiKey, prompt, model);
   if (response.success) {
     if (isInterruptedConversationMessage(response.content)) {
-      LLMResponse retry = callCurrentProvider(apiKey, prompt);
+      LLMResponse retry = callProvider(provider, apiKey, prompt, model);
       if (retry.success && !isInterruptedConversationMessage(retry.content)) {
         wipeString(apiKey);
         return retry.content;
@@ -2032,7 +2610,7 @@ std::wstring invokeProvider(const std::wstring &prompt) {
   }
 
   if (isInterruptedConversationMessage(response.errorMessage)) {
-    LLMResponse retry = callCurrentProvider(apiKey, prompt);
+    LLMResponse retry = callProvider(provider, apiKey, prompt, model);
     if (retry.success && !isInterruptedConversationMessage(retry.content)) {
       wipeString(apiKey);
       return retry.content;
@@ -2042,12 +2620,82 @@ std::wstring invokeProvider(const std::wstring &prompt) {
   }
 
   wipeString(apiKey);
-  return L"[Error] " + getProviderName(g_currentProvider) +
+  return L"[Error] " + getProviderName(provider) +
          L" API call failed:\n" + response.errorMessage;
+}
+
+std::wstring invokeProvider(const std::wstring &prompt) {
+  return invokeProvider(g_currentProvider, g_currentModel, prompt);
+}
+
+void startAiRequest(const AiRequest &request) {
+  if (g_requestInProgress) {
+    addMessage(false, L"[Notice] Another AI request is still running.");
+    updateChatDisplay();
+    return;
+  }
+
+  g_requestInProgress = true;
+  g_waitingAnimationFrame = 0;
+  setRequestControlsEnabled(false);
+  addMessage(false, getWaitingAnimationText());
+  g_pendingMessageIndex = g_chatHistory.empty() ? 0 : g_chatHistory.size() - 1;
+  updateChatDisplay();
+  if (g_panel) {
+    ::SetTimer(g_panel, kRequestAnimationTimerId, kRequestAnimationMs, nullptr);
+  }
+
+  AiRequest workerRequest = request;
+  HWND targetPanel = g_panel;
+  std::thread([workerRequest, targetPanel]() {
+    auto result = std::make_unique<AiRequestResult>();
+    result->response = invokeProvider(workerRequest.provider, workerRequest.model,
+                                      workerRequest.effectivePrompt);
+    result->replaceSelection = workerRequest.replaceSelection;
+    result->selection = workerRequest.selection;
+
+    if (targetPanel && ::IsWindow(targetPanel)) {
+      ::PostMessageW(targetPanel, WM_AI_REQUEST_COMPLETE, 0,
+                     reinterpret_cast<LPARAM>(result.release()));
+    }
+  }).detach();
+}
+
+void completeAiRequest(std::unique_ptr<AiRequestResult> result) {
+  if (g_panel) {
+    ::KillTimer(g_panel, kRequestAnimationTimerId);
+  }
+  g_requestInProgress = false;
+  setRequestControlsEnabled(true);
+
+  if (!result) {
+    updateMessageContent(g_pendingMessageIndex,
+                         L"[Error] AI request finished without a result.");
+    updateChatDisplay();
+    return;
+  }
+
+  updateMessageContent(g_pendingMessageIndex, result->response);
+  updateChatDisplay();
+
+  if (result->replaceSelection &&
+      result->response.rfind(L"[Error]", 0) != 0 &&
+      result->response.rfind(L"[Notice]", 0) != 0) {
+    if (!replaceSelectionText(result->selection, result->response)) {
+      addMessage(false,
+                 L"[Error] Failed to write the AI result back to the editor.");
+      updateChatDisplay();
+    }
+  }
 }
 
 void sendPrompt(const std::wstring &prompt) {
   if (prompt.empty()) {
+    return;
+  }
+  if (g_requestInProgress) {
+    addMessage(false, L"[Notice] Another AI request is still running.");
+    updateChatDisplay();
     return;
   }
 
@@ -2055,11 +2703,361 @@ void sendPrompt(const std::wstring &prompt) {
   updateChatDisplay();
 
   g_lastPromptUserRequest = prompt;
-  std::wstring effectivePrompt = buildEffectivePrompt(prompt, false);
-  std::wstring response = invokeProvider(effectivePrompt);
-  addMessage(false, response);
-  updateChatDisplay();
+  AiRequest request;
+  request.provider = g_currentProvider;
+  request.model = g_currentModel;
+  request.userPrompt = prompt;
+  request.effectivePrompt = buildEffectivePrompt(prompt, false);
+  startAiRequest(request);
   clearInput();
+}
+
+void populatePromptSectionTokenCombo(HWND combo) {
+  if (!combo) {
+    return;
+  }
+
+  ::SendMessageW(combo, CB_RESETCONTENT, 0, 0);
+  for (const wchar_t *token : getPromptTemplateTokens()) {
+    ::SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(token));
+  }
+  ::SendMessageW(combo, CB_SETCURSEL, 0, 0);
+}
+
+HWND getFocusedPromptTemplateEdit(HWND hwnd) {
+  HWND focus = ::GetFocus();
+  if (focus == ::GetDlgItem(hwnd, IDC_RULES_TEMPLATE_EDIT) ||
+      focus == ::GetDlgItem(hwnd, IDC_ASSIGNMENT_TEMPLATE_EDIT) ||
+      focus == ::GetDlgItem(hwnd, IDC_IDENTITY_TEMPLATE_EDIT)) {
+    return focus;
+  }
+  return ::GetDlgItem(hwnd, IDC_IDENTITY_TEMPLATE_EDIT);
+}
+
+void insertSelectedPromptToken(HWND hwnd) {
+  HWND combo = ::GetDlgItem(hwnd, IDC_PROMPT_SECTION_TOKEN_COMBO);
+  HWND edit = getFocusedPromptTemplateEdit(hwnd);
+  if (!combo || !edit) {
+    return;
+  }
+
+  int selection =
+      static_cast<int>(::SendMessageW(combo, CB_GETCURSEL, 0, 0));
+  if (selection < 0) {
+    return;
+  }
+
+  wchar_t token[64] = {};
+  ::SendMessageW(combo, CB_GETLBTEXT, static_cast<WPARAM>(selection),
+                 reinterpret_cast<LPARAM>(token));
+  ::SendMessageW(edit, EM_REPLACESEL, TRUE, reinterpret_cast<LPARAM>(token));
+  ::SetFocus(edit);
+}
+
+void syncPromptSectionsDialogFromConfig(HWND hwnd,
+                                        const AIAssistantConfig &config) {
+  ::SendMessageW(::GetDlgItem(hwnd, IDC_IDENTITY_ENABLED_CHECK), BM_SETCHECK,
+                 config.identityEnabled ? BST_CHECKED : BST_UNCHECKED, 0);
+  ::SendMessageW(::GetDlgItem(hwnd, IDC_RULES_ENABLED_CHECK), BM_SETCHECK,
+                 config.rulesEnabled ? BST_CHECKED : BST_UNCHECKED, 0);
+  ::SendMessageW(::GetDlgItem(hwnd, IDC_ASSIGNMENT_ENABLED_CHECK), BM_SETCHECK,
+                 config.assignmentTemplateEnabled ? BST_CHECKED : BST_UNCHECKED,
+                 0);
+  ::SetWindowTextW(::GetDlgItem(hwnd, IDC_IDENTITY_TEMPLATE_EDIT),
+                   (config.identityTemplate.empty() ? getDefaultIdentityTemplate()
+                                                    : config.identityTemplate)
+                       .c_str());
+  ::SetWindowTextW(::GetDlgItem(hwnd, IDC_RULES_TEMPLATE_EDIT),
+                   (config.rulesTemplate.empty() ? getDefaultRulesTemplate()
+                                                 : config.rulesTemplate)
+                       .c_str());
+  ::SetWindowTextW(
+      ::GetDlgItem(hwnd, IDC_ASSIGNMENT_TEMPLATE_EDIT),
+      (config.assignmentTemplate.empty() ? getDefaultAssignmentTemplate()
+                                         : config.assignmentTemplate)
+          .c_str());
+}
+
+void capturePromptSectionsDialogToConfig(HWND hwnd,
+                                         AIAssistantConfig &config) {
+  config.identityEnabled =
+      ::SendMessageW(::GetDlgItem(hwnd, IDC_IDENTITY_ENABLED_CHECK), BM_GETCHECK,
+                     0, 0) == BST_CHECKED;
+  config.rulesEnabled =
+      ::SendMessageW(::GetDlgItem(hwnd, IDC_RULES_ENABLED_CHECK), BM_GETCHECK, 0,
+                     0) == BST_CHECKED;
+  config.assignmentTemplateEnabled =
+      ::SendMessageW(::GetDlgItem(hwnd, IDC_ASSIGNMENT_ENABLED_CHECK),
+                     BM_GETCHECK, 0, 0) == BST_CHECKED;
+  config.identityTemplate =
+      getControlText(::GetDlgItem(hwnd, IDC_IDENTITY_TEMPLATE_EDIT));
+  config.rulesTemplate =
+      getControlText(::GetDlgItem(hwnd, IDC_RULES_TEMPLATE_EDIT));
+  config.assignmentTemplate =
+      getControlText(::GetDlgItem(hwnd, IDC_ASSIGNMENT_TEMPLATE_EDIT));
+}
+
+void applyLocalizedPromptSectionsText(HWND hwnd) {
+  const bool chinese = g_uiLanguage == UiLanguage::Chinese;
+  ::SetWindowTextW(hwnd, chinese ? L"\u63D0\u793A\u8A5E\u5340\u584A"
+                                 : L"Prompt Sections");
+  ::SetWindowTextW(::GetDlgItem(hwnd, IDC_PROMPT_SECTION_INSERT_BUTTON),
+                   chinese ? L"\u63D2\u5165" : L"Insert");
+  ::SetWindowTextW(::GetDlgItem(hwnd, IDC_IDENTITY_ENABLED_CHECK),
+                   chinese ? L"\u555F\u7528 Identity" : L"Enable Identity");
+  ::SetWindowTextW(::GetDlgItem(hwnd, IDC_RULES_ENABLED_CHECK),
+                   chinese ? L"\u555F\u7528 Rules" : L"Enable Rules");
+  ::SetWindowTextW(::GetDlgItem(hwnd, IDC_ASSIGNMENT_ENABLED_CHECK),
+                   chinese ? L"\u555F\u7528 Assignment" : L"Enable Assignment");
+  ::SetWindowTextW(::GetDlgItem(hwnd, IDC_IDENTITY_RESET_BUTTON),
+                   chinese ? L"\u91CD\u7F6E Identity" : L"Reset Identity");
+  ::SetWindowTextW(::GetDlgItem(hwnd, IDC_RULES_RESET_BUTTON),
+                   chinese ? L"\u91CD\u7F6E Rules" : L"Reset Rules");
+  ::SetWindowTextW(::GetDlgItem(hwnd, IDC_ASSIGNMENT_RESET_BUTTON),
+                   chinese ? L"\u91CD\u7F6E Assignment" : L"Reset Assignment");
+  ::SetWindowTextW(::GetDlgItem(hwnd, IDOK),
+                   chinese ? L"\u78BA\u5B9A" : L"OK");
+  ::SetWindowTextW(::GetDlgItem(hwnd, IDCANCEL),
+                   chinese ? L"\u53D6\u6D88" : L"Cancel");
+}
+
+INT_PTR CALLBACK PromptSectionsDlgProc(HWND hwnd, UINT message, WPARAM wParam,
+                                       LPARAM lParam) {
+  auto *config = reinterpret_cast<AIAssistantConfig *>(
+      ::GetWindowLongPtrW(hwnd, DWLP_USER));
+
+  switch (message) {
+  case WM_INITDIALOG: {
+    auto *incoming = reinterpret_cast<AIAssistantConfig *>(lParam);
+    ::SetWindowLongPtrW(hwnd, DWLP_USER, reinterpret_cast<LONG_PTR>(incoming));
+    populatePromptSectionTokenCombo(
+        ::GetDlgItem(hwnd, IDC_PROMPT_SECTION_TOKEN_COMBO));
+    applyLocalizedPromptSectionsText(hwnd);
+    syncPromptSectionsDialogFromConfig(hwnd, *incoming);
+    return TRUE;
+  }
+
+  case WM_COMMAND:
+    switch (LOWORD(wParam)) {
+    case IDC_PROMPT_SECTION_INSERT_BUTTON:
+      insertSelectedPromptToken(hwnd);
+      return TRUE;
+    case IDC_IDENTITY_RESET_BUTTON:
+      ::SetWindowTextW(::GetDlgItem(hwnd, IDC_IDENTITY_TEMPLATE_EDIT),
+                       getDefaultIdentityTemplate().c_str());
+      return TRUE;
+    case IDC_RULES_RESET_BUTTON:
+      ::SetWindowTextW(::GetDlgItem(hwnd, IDC_RULES_TEMPLATE_EDIT),
+                       getDefaultRulesTemplate().c_str());
+      return TRUE;
+    case IDC_ASSIGNMENT_RESET_BUTTON:
+      ::SetWindowTextW(::GetDlgItem(hwnd, IDC_ASSIGNMENT_TEMPLATE_EDIT),
+                       getDefaultAssignmentTemplate().c_str());
+      return TRUE;
+    case IDOK:
+      if (config) {
+        capturePromptSectionsDialogToConfig(hwnd, *config);
+      }
+      ::EndDialog(hwnd, IDOK);
+      return TRUE;
+    case IDCANCEL:
+      ::EndDialog(hwnd, IDCANCEL);
+      return TRUE;
+    default:
+      break;
+    }
+    break;
+  }
+
+  return FALSE;
+}
+
+void applyLocalizedMemoryStorageText(HWND hwnd) {
+  const bool chinese = g_uiLanguage == UiLanguage::Chinese;
+  ::SetWindowTextW(hwnd, chinese ? L"\u8A18\u61B6\u5132\u5B58"
+                                 : L"Memory Storage");
+  ::SetWindowTextW(::GetDlgItem(hwnd, IDC_MEMORY_ENABLED_CHECK),
+                   chinese ? L"\u555F\u7528\u53EF\u8996\u8A18\u61B6\u5340\u584A"
+                           : L"Enable visible memory section");
+  ::SetWindowTextW(
+      ::GetDlgItem(hwnd, IDC_MEMORY_WARNING_STATIC),
+      chinese
+          ? L"\u8A18\u61B6\u6703\u4EE5\u4E00\u822C\u5916\u639B\u8A2D\u5B9A\u660E\u6587\u5132\u5B58\u3002\u8ACB\u52FF\u5132\u5B58\u6A5F\u5BC6\u3001token\u3001\u5BC6\u78BC\u6216\u5BA2\u6236\u79C1\u6709\u8CC7\u6599\u3002"
+          : L"Memory is stored as plain plugin settings. Do not store secrets, tokens, passwords, or private customer data.");
+  ::SetWindowTextW(::GetDlgItem(hwnd, IDC_MEMORY_CLEAR_BUTTON),
+                   chinese ? L"\u6E05\u9664\u8A18\u61B6" : L"Clear Memory");
+  ::SetWindowTextW(::GetDlgItem(hwnd, IDOK),
+                   chinese ? L"\u78BA\u5B9A" : L"OK");
+  ::SetWindowTextW(::GetDlgItem(hwnd, IDCANCEL),
+                   chinese ? L"\u53D6\u6D88" : L"Cancel");
+}
+
+void syncMemoryDialogFromConfig(HWND hwnd, const AIAssistantConfig &config) {
+  ::SendMessageW(::GetDlgItem(hwnd, IDC_MEMORY_ENABLED_CHECK), BM_SETCHECK,
+                 config.memoryEnabled ? BST_CHECKED : BST_UNCHECKED, 0);
+  ::SetWindowTextW(::GetDlgItem(hwnd, IDC_MEMORY_CONTENT_EDIT),
+                   config.memoryContent.c_str());
+}
+
+void captureMemoryDialogToConfig(HWND hwnd, AIAssistantConfig &config) {
+  config.memoryEnabled =
+      ::SendMessageW(::GetDlgItem(hwnd, IDC_MEMORY_ENABLED_CHECK), BM_GETCHECK,
+                     0, 0) == BST_CHECKED;
+  config.memoryContent =
+      getControlText(::GetDlgItem(hwnd, IDC_MEMORY_CONTENT_EDIT));
+  if (config.memoryContent.size() > kMaxMemoryChars) {
+    config.memoryContent.resize(kMaxMemoryChars);
+  }
+}
+
+INT_PTR CALLBACK MemoryStorageDlgProc(HWND hwnd, UINT message, WPARAM wParam,
+                                      LPARAM lParam) {
+  auto *config = reinterpret_cast<AIAssistantConfig *>(
+      ::GetWindowLongPtrW(hwnd, DWLP_USER));
+
+  switch (message) {
+  case WM_INITDIALOG: {
+    auto *incoming = reinterpret_cast<AIAssistantConfig *>(lParam);
+    ::SetWindowLongPtrW(hwnd, DWLP_USER, reinterpret_cast<LONG_PTR>(incoming));
+    applyLocalizedMemoryStorageText(hwnd);
+    syncMemoryDialogFromConfig(hwnd, *incoming);
+    return TRUE;
+  }
+
+  case WM_COMMAND:
+    switch (LOWORD(wParam)) {
+    case IDC_MEMORY_CLEAR_BUTTON:
+      ::SetWindowTextW(::GetDlgItem(hwnd, IDC_MEMORY_CONTENT_EDIT), L"");
+      ::SendMessageW(::GetDlgItem(hwnd, IDC_MEMORY_ENABLED_CHECK), BM_SETCHECK,
+                     BST_UNCHECKED, 0);
+      return TRUE;
+    case IDOK:
+      if (config) {
+        captureMemoryDialogToConfig(hwnd, *config);
+      }
+      ::EndDialog(hwnd, IDOK);
+      return TRUE;
+    case IDCANCEL:
+      ::EndDialog(hwnd, IDCANCEL);
+      return TRUE;
+    default:
+      break;
+    }
+    break;
+  }
+
+  return FALSE;
+}
+
+constexpr std::array<int, kContextTemplateCount> kContextTemplateEnabledIds = {
+    IDC_CONTEXT_TEMPLATE1_ENABLED_CHECK, IDC_CONTEXT_TEMPLATE2_ENABLED_CHECK,
+    IDC_CONTEXT_TEMPLATE3_ENABLED_CHECK};
+constexpr std::array<int, kContextTemplateCount> kContextTemplateNameIds = {
+    IDC_CONTEXT_TEMPLATE1_NAME_EDIT, IDC_CONTEXT_TEMPLATE2_NAME_EDIT,
+    IDC_CONTEXT_TEMPLATE3_NAME_EDIT};
+constexpr std::array<int, kContextTemplateCount> kContextTemplatePromptIds = {
+    IDC_CONTEXT_TEMPLATE1_PROMPT_EDIT, IDC_CONTEXT_TEMPLATE2_PROMPT_EDIT,
+    IDC_CONTEXT_TEMPLATE3_PROMPT_EDIT};
+constexpr std::array<int, kContextTemplateCount> kContextTemplateReplaceIds = {
+    IDC_CONTEXT_TEMPLATE1_REPLACE_CHECK, IDC_CONTEXT_TEMPLATE2_REPLACE_CHECK,
+    IDC_CONTEXT_TEMPLATE3_REPLACE_CHECK};
+
+void applyLocalizedContextTemplatesText(HWND hwnd) {
+  const bool chinese = g_uiLanguage == UiLanguage::Chinese;
+  ::SetWindowTextW(hwnd, chinese ? L"\u53F3\u9375\u6A23\u677F"
+                                 : L"Context Menu Templates");
+  for (size_t i = 0; i < kContextTemplateCount; ++i) {
+    std::wstring enableText =
+        chinese ? L"\u555F\u7528 Template " + std::to_wstring(i + 1)
+                : L"Enable Template " + std::to_wstring(i + 1);
+    ::SetWindowTextW(::GetDlgItem(hwnd, kContextTemplateEnabledIds[i]),
+                     enableText.c_str());
+    ::SetWindowTextW(::GetDlgItem(hwnd, kContextTemplateReplaceIds[i]),
+                     chinese ? L"\u53D6\u4EE3\u9078\u53D6\u6587\u5B57"
+                             : L"Replace selection");
+  }
+  ::SetWindowTextW(::GetDlgItem(hwnd, IDOK),
+                   chinese ? L"\u78BA\u5B9A" : L"OK");
+  ::SetWindowTextW(::GetDlgItem(hwnd, IDCANCEL),
+                   chinese ? L"\u53D6\u6D88" : L"Cancel");
+}
+
+void syncContextTemplatesDialogFromConfig(HWND hwnd,
+                                          const AIAssistantConfig &config) {
+  for (size_t i = 0; i < kContextTemplateCount; ++i) {
+    const ContextMenuTemplate &item = config.contextTemplates[i];
+    ::SendMessageW(::GetDlgItem(hwnd, kContextTemplateEnabledIds[i]),
+                   BM_SETCHECK, item.enabled ? BST_CHECKED : BST_UNCHECKED, 0);
+    ::SendMessageW(::GetDlgItem(hwnd, kContextTemplateReplaceIds[i]),
+                   BM_SETCHECK,
+                   item.replaceSelection ? BST_CHECKED : BST_UNCHECKED, 0);
+    ::SetWindowTextW(::GetDlgItem(hwnd, kContextTemplateNameIds[i]),
+                     (item.name.empty() ? getDefaultContextTemplateName(i)
+                                        : item.name)
+                         .c_str());
+    ::SetWindowTextW(::GetDlgItem(hwnd, kContextTemplatePromptIds[i]),
+                     (item.promptTemplate.empty()
+                          ? getDefaultContextTemplatePrompt(i)
+                          : item.promptTemplate)
+                         .c_str());
+  }
+}
+
+void captureContextTemplatesDialogToConfig(HWND hwnd,
+                                           AIAssistantConfig &config) {
+  for (size_t i = 0; i < kContextTemplateCount; ++i) {
+    ContextMenuTemplate &item = config.contextTemplates[i];
+    item.enabled =
+        ::SendMessageW(::GetDlgItem(hwnd, kContextTemplateEnabledIds[i]),
+                       BM_GETCHECK, 0, 0) == BST_CHECKED;
+    item.replaceSelection =
+        ::SendMessageW(::GetDlgItem(hwnd, kContextTemplateReplaceIds[i]),
+                       BM_GETCHECK, 0, 0) == BST_CHECKED;
+    item.name = trimWhitespace(getControlText(
+        ::GetDlgItem(hwnd, kContextTemplateNameIds[i])));
+    item.promptTemplate = trimWhitespace(getControlText(
+        ::GetDlgItem(hwnd, kContextTemplatePromptIds[i])));
+    if (item.name.empty()) {
+      item.name = getDefaultContextTemplateName(i);
+    }
+    if (item.promptTemplate.empty()) {
+      item.promptTemplate = getDefaultContextTemplatePrompt(i);
+    }
+  }
+}
+
+INT_PTR CALLBACK ContextTemplatesDlgProc(HWND hwnd, UINT message, WPARAM wParam,
+                                         LPARAM lParam) {
+  auto *config = reinterpret_cast<AIAssistantConfig *>(
+      ::GetWindowLongPtrW(hwnd, DWLP_USER));
+
+  switch (message) {
+  case WM_INITDIALOG: {
+    auto *incoming = reinterpret_cast<AIAssistantConfig *>(lParam);
+    ::SetWindowLongPtrW(hwnd, DWLP_USER, reinterpret_cast<LONG_PTR>(incoming));
+    applyLocalizedContextTemplatesText(hwnd);
+    syncContextTemplatesDialogFromConfig(hwnd, *incoming);
+    return TRUE;
+  }
+
+  case WM_COMMAND:
+    switch (LOWORD(wParam)) {
+    case IDOK:
+      if (config) {
+        captureContextTemplatesDialogToConfig(hwnd, *config);
+      }
+      ::EndDialog(hwnd, IDOK);
+      return TRUE;
+    case IDCANCEL:
+      ::EndDialog(hwnd, IDCANCEL);
+      return TRUE;
+    default:
+      break;
+    }
+    break;
+  }
+
+  return FALSE;
 }
 
 INT_PTR CALLBACK SettingsDlgProc(HWND hwnd, UINT message, WPARAM wParam,
@@ -2145,6 +3143,48 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwnd, UINT message, WPARAM wParam,
       if (HIWORD(wParam) == BN_CLICKED && config) {
         capturePromptSettingsFromDialog(hwnd, *config);
         updatePromptPreviewInSettings(hwnd, *config);
+        return TRUE;
+      }
+      break;
+
+    case IDC_PROMPT_SECTIONS_BUTTON:
+      if (HIWORD(wParam) == BN_CLICKED && config) {
+        capturePromptSettingsFromDialog(hwnd, *config);
+        if (::DialogBoxParamW(
+                g_hInst, MAKEINTRESOURCEW(IDD_AIASSISTANT_PROMPT_SECTIONS),
+                hwnd, PromptSectionsDlgProc,
+                reinterpret_cast<LPARAM>(config)) == IDOK) {
+          savePreferencesToSettings(*config);
+          updatePromptPreviewInSettings(hwnd, *config);
+        }
+        return TRUE;
+      }
+      break;
+
+    case IDC_MEMORY_STORAGE_BUTTON:
+      if (HIWORD(wParam) == BN_CLICKED && config) {
+        capturePromptSettingsFromDialog(hwnd, *config);
+        if (::DialogBoxParamW(
+                g_hInst, MAKEINTRESOURCEW(IDD_AIASSISTANT_MEMORY_STORAGE),
+                hwnd, MemoryStorageDlgProc,
+                reinterpret_cast<LPARAM>(config)) == IDOK) {
+          savePreferencesToSettings(*config);
+          updatePromptPreviewInSettings(hwnd, *config);
+        }
+        return TRUE;
+      }
+      break;
+
+    case IDC_CONTEXT_TEMPLATES_BUTTON:
+      if (HIWORD(wParam) == BN_CLICKED && config) {
+        capturePromptSettingsFromDialog(hwnd, *config);
+        if (::DialogBoxParamW(
+                g_hInst, MAKEINTRESOURCEW(IDD_AIASSISTANT_CONTEXT_TEMPLATES),
+                hwnd, ContextTemplatesDlgProc,
+                reinterpret_cast<LPARAM>(config)) == IDOK) {
+          savePreferencesToSettings(*config);
+          updatePromptPreviewInSettings(hwnd, *config);
+        }
         return TRUE;
       }
       break;
@@ -2425,7 +3465,24 @@ INT_PTR CALLBACK PanelDlgProc(HWND hwnd, UINT message, WPARAM wParam,
       pollCopilotAuth();
       return TRUE;
     }
+    if (wParam == kRequestAnimationTimerId) {
+      if (g_requestInProgress) {
+        ++g_waitingAnimationFrame;
+        updateMessageContent(g_pendingMessageIndex, getWaitingAnimationText());
+        updateChatDisplay();
+      } else {
+        ::KillTimer(hwnd, kRequestAnimationTimerId);
+      }
+      return TRUE;
+    }
     break;
+
+  case WM_AI_REQUEST_COMPLETE: {
+    std::unique_ptr<AiRequestResult> result(
+        reinterpret_cast<AiRequestResult *>(lParam));
+    completeAiRequest(std::move(result));
+    return TRUE;
+  }
 
   case WM_NOTIFY: {
     auto *nmhdr = reinterpret_cast<LPNMHDR>(lParam);
@@ -2437,6 +3494,8 @@ INT_PTR CALLBACK PanelDlgProc(HWND hwnd, UINT message, WPARAM wParam,
   }
 
   case WM_DESTROY:
+    ::KillTimer(hwnd, kRequestAnimationTimerId);
+    g_requestInProgress = false;
     uninstallInputEditSubclass();
     if (g_panel == hwnd) {
       g_panel = nullptr;
@@ -2462,17 +3521,19 @@ INT_PTR CALLBACK PanelDlgProc(HWND hwnd, UINT message, WPARAM wParam,
       return TRUE;
 
     case IDC_AI_FONT_INCREASE_BUTTON:
-      if (g_fontSize < kMaxFontSize) {
-        ++g_fontSize;
-        updateChatFont();
-      }
+      g_config.displayScalePercent = clampDisplayScalePercent(
+          g_config.displayScalePercent + 10);
+      g_fontSize = fontSizeFromDisplayScale(g_config.displayScalePercent);
+      savePreferencesToSettings(g_config);
+      updateChatFont();
       return TRUE;
 
     case IDC_AI_FONT_DECREASE_BUTTON:
-      if (g_fontSize > kMinFontSize) {
-        --g_fontSize;
-        updateChatFont();
-      }
+      g_config.displayScalePercent = clampDisplayScalePercent(
+          g_config.displayScalePercent - 10);
+      g_fontSize = fontSizeFromDisplayScale(g_config.displayScalePercent);
+      savePreferencesToSettings(g_config);
+      updateChatFont();
       return TRUE;
 
     case IDC_AI_PROVIDER_COMBO:
@@ -2573,6 +3634,12 @@ void queuePrompt(const std::wstring &prompt) {
 }
 
 void runSelectionCommand(const wchar_t *prefix, SelectionAction action) {
+  if (g_requestInProgress) {
+    addMessage(false, L"[Notice] Another AI request is still running.");
+    updateChatDisplay();
+    return;
+  }
+
   SelectionContext context = getCurrentSelectionContext();
   if (!context.scintilla || context.text.empty()) {
     ::MessageBoxW(g_nppData._nppHandle,
@@ -2586,22 +3653,35 @@ void runSelectionCommand(const wchar_t *prefix, SelectionAction action) {
   addMessage(true, prompt);
   updateChatDisplay();
 
-  std::wstring effectivePrompt =
+  g_lastPromptUserRequest = prompt;
+  AiRequest request;
+  request.provider = g_currentProvider;
+  request.model = g_currentModel;
+  request.userPrompt = prompt;
+  request.effectivePrompt =
       buildEffectivePrompt(prompt, action == SelectionAction::ReplaceSelection);
-  std::wstring response = invokeProvider(effectivePrompt);
-  addMessage(false, response);
-  updateChatDisplay();
-
-  if (action == SelectionAction::ReplaceSelection &&
-      response.rfind(L"[Error]", 0) != 0 && response.rfind(L"[Notice]", 0) != 0) {
-    if (!replaceSelectionText(context, response)) {
-      addMessage(false,
-                 L"[Error] Failed to write the AI result back to the editor.");
-      updateChatDisplay();
-    }
-  }
+  request.replaceSelection = action == SelectionAction::ReplaceSelection;
+  request.selection = context;
+  startAiRequest(request);
 
   clearInput();
+}
+
+void runCustomContextTemplate(size_t index) {
+  if (index >= kContextTemplateCount) {
+    return;
+  }
+
+  const ContextMenuTemplate &item = g_config.contextTemplates[index];
+  const std::wstring promptTemplate = trimWhitespace(item.promptTemplate);
+  if (!item.enabled || promptTemplate.empty()) {
+    return;
+  }
+
+  runSelectionCommand(
+      promptTemplate.c_str(),
+      item.replaceSelection ? SelectionAction::ReplaceSelection
+                            : SelectionAction::Explain);
 }
 
 void showAiContextMenu(HWND scintilla, LPARAM lParam) {
@@ -2630,6 +3710,22 @@ void showAiContextMenu(HWND scintilla, LPARAM lParam) {
   ::AppendMenuW(menu, MF_STRING, kAiContextComments,
                 tr(TextId::ContextComments));
   ::AppendMenuW(menu, MF_STRING, kAiContextFix, tr(TextId::ContextFix));
+  bool addedCustomSeparator = false;
+  for (size_t i = 0; i < kContextTemplateCount; ++i) {
+    const ContextMenuTemplate &item = g_config.contextTemplates[i];
+    const std::wstring name = trimWhitespace(item.name);
+    const std::wstring promptTemplate = trimWhitespace(item.promptTemplate);
+    if (!item.enabled || name.empty() || promptTemplate.empty()) {
+      continue;
+    }
+    if (!addedCustomSeparator) {
+      ::AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+      addedCustomSeparator = true;
+    }
+    ::AppendMenuW(menu, MF_STRING,
+                  kAiContextCustomTemplateBase + static_cast<UINT>(i),
+                  name.c_str());
+  }
 
   const UINT selected = ::TrackPopupMenu(
       menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_NONOTIFY, pt.x, pt.y, 0,
@@ -2650,6 +3746,11 @@ void showAiContextMenu(HWND scintilla, LPARAM lParam) {
     cmdFixCode();
     break;
   default:
+    if (selected >= kAiContextCustomTemplateBase &&
+        selected < kAiContextCustomTemplateBase + kContextTemplateCount) {
+      runCustomContextTemplate(
+          static_cast<size_t>(selected - kAiContextCustomTemplateBase));
+    }
     break;
   }
 }

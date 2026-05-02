@@ -1,5 +1,38 @@
 # Development Log
 
+## 2026-05-03
+
+### Prompt section groundwork
+
+- Added a reviewed development plan, external audit report, and corrected
+  implementation plan for the requested prompt, OAuth, UI, memory, and release
+  optimization batch.
+- Reworked prompt assembly into visible sections: Mandatory System, Identity,
+  Rules, System, Assignment, and User Request.
+- Added built-in identity, basic rules, and assignment templates with
+  SettingsStorage persistence for non-secret template text.
+- Added template token resolution for plugin/provider/model/language/encoding,
+  line ending, and timestamp values at preview/send time.
+- Added estimated token summary output to the prompt preview.
+- Added a secondary Prompt Sections dialog for editing Identity, Rules, and
+  Assignment templates with token insertion, enable toggles, and reset buttons.
+- Persisted AI panel display scale through the existing `A+` and `A-` toolbar
+  controls, clamped from 80% to 150%.
+- Moved provider requests off the UI thread and added a timer-driven waiting
+  message while responses are pending.
+- Added explicit Memory storage with a visible prompt section, disabled by
+  default, bounded to 3,600 characters, and stored as non-secret settings.
+- Added three configurable right-click context templates with optional
+  selection replacement.
+- Documented that real OAuth login remains planned rather than shipped in this
+  batch.
+- Added package readiness metadata so local package smoke cannot be mistaken for
+  a publishable Plugins Admin entry without a direct HTTPS `.zip` release URL.
+- Added `scripts/smoke-package-install.ps1` to verify the packaged ZIP can be
+  staged into a temporary Notepad++ plugin layout without PDB files.
+- Added `docs/COMPLETION_AUDIT_2026-05-03.md` to map the full development-loop
+  objective to concrete evidence and remaining gates.
+
 ## 2026-04-26
 
 ### Secret lifetime reduction

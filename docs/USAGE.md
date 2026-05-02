@@ -58,8 +58,31 @@ You can control:
 - response detail
 - scenario modules
 - output rules
+- identity, rules, and assignment templates through `Prompt Sections...`
 
-The prompt preview updates as these options change.
+The prompt preview updates as these options change. It now shows the prompt as
+visible sections:
+
+- Mandatory System
+- Identity
+- Rules
+- Memory
+- System
+- Assignment
+- User Request
+
+`Mandatory System` is not user-editable. It preserves the single-turn and
+no-hidden-memory contract even when other prompt templates are changed.
+
+The preview also includes per-section and total estimated tokens. These values
+are local estimates, not exact provider billing or context-window counts.
+
+Use `Prompt Sections...` to edit the visible Identity, Rules, and Assignment
+templates. The token dropdown inserts supported variables such as
+`{{PROVIDER}}`, `{{MODEL}}`, `{{LANGUAGE}}`, and `{{TIMESTAMP}}` into the
+focused template editor. Reset buttons restore the built-in defaults. Pressing
+`OK` in this dialog saves the non-secret prompt-section preferences immediately
+through the plugin settings file.
 
 ## Presets
 
@@ -72,6 +95,50 @@ Current presets are designed for fast one-off tasks:
 - Write Docs
 
 These presets do not add hidden memory. They only reshape the prompt for the current request.
+
+## Memory Storage
+
+Memory storage is explicit and disabled by default. Use `Memory...` in settings
+to enable a visible Memory section and edit the memory text that will be sent.
+The prompt preview shows whether Memory is off or how many estimated tokens it
+adds.
+
+Memory is stored as plain plugin settings, not DPAPI-protected secret storage.
+Do not store API keys, OAuth tokens, passwords, private customer data, or
+anything that should not appear in normal Notepad++ plugin configuration files.
+
+## Capability Boundaries
+
+These items are planned but not shipped in the current build:
+
+- real OAuth sign-in for OpenAI, Gemini, Claude, or a hosted broker
+- floating inline editor overlay
+
+The existing paused Copilot OAuth code is not the same as a shipped OAuth login
+feature. OAuth work must be reported separately as storage model implemented,
+provider UI prepared, and real provider sign-in validated.
+
+## Waiting State
+
+Provider requests run off the UI thread. While a request is active, the panel
+shows a timer-driven `Waiting for AI response...` message and disables provider,
+model, and send controls. When the request completes, the result is posted back
+to the UI thread before the chat display or selected editor text is updated.
+
+## Custom Context Templates
+
+Use `Context Templates...` in settings to configure up to three right-click
+templates. Each slot has:
+
+- enable toggle
+- menu name
+- prompt template
+- optional replacement mode
+
+Enabled templates appear under the standard AI context-menu actions when text is
+selected in Notepad++. Replacement mode writes the AI result back to the original
+selection after the async request completes and the original buffer is still
+active.
 
 ## Prompt Preview
 
@@ -112,6 +179,10 @@ These actions are optimized for fast in-editor use.
 5. Review the formatted response.
 
 If `Ctrl+Enter` mode is enabled, plain Enter will no longer send directly.
+
+Use `A+` and `A-` in the panel toolbar to adjust display scale for the chat and
+input text. The scale is stored as a non-secret preference and is clamped between
+80% and 150%.
 
 ## Model Loading
 

@@ -642,6 +642,115 @@ LLMResponse LLMApiClient::callClaude(const std::wstring &apiKey,
   return response;
 }
 
+LLMResponse LLMApiClient::callOpenRouter(const std::wstring &apiKey,
+                                         const std::wstring &prompt,
+                                         const std::wstring &model) {
+  LLMResponse response;
+
+  if (apiKey.empty()) {
+    response.errorMessage = L"OpenRouter API key is not configured";
+    return response;
+  }
+
+  // Build request body
+  std::wstring escapedPrompt = escapeJsonString(prompt);
+  std::wstring requestBody =
+      L"{\"model\":\"" + model +
+      L"\","
+      L"\"messages\":[{\"role\":\"user\",\"content\":\"" +
+      escapedPrompt +
+      L"\"}],"
+      L"\"max_tokens\":2048}";
+
+  // Set headers
+  std::map<std::wstring, std::wstring> headers;
+  headers[L"Content-Type"] = L"application/json";
+  headers[L"Authorization"] = L"Bearer " + apiKey;
+  headers[L"HTTP-Referer"] = L"https://github.com/npp-ai-assistant";
+  headers[L"X-Title"] = L"NppAIAssistant";
+
+  // Make request
+  HttpResponse httpResponse = HttpClient::post(
+      L"https://openrouter.ai/api/v1/chat/completions", requestBody, headers);
+
+  if (!httpResponse.success) {
+    response.errorMessage =
+        L"HTTP request failed: " + httpResponse.errorMessage;
+    if (!httpResponse.body.empty()) {
+      std::wstring errorMsg = extractJsonValue(httpResponse.body, L"message");
+      if (!errorMsg.empty())
+        response.errorMessage += L"\n" + errorMsg;
+    }
+    return response;
+  }
+
+  // Parse response - extract content from choices[0].message.content
+  size_t choicesPos = httpResponse.body.find(L"\"choices\"");
+  if (choicesPos != std::wstring::npos) {
+    std::wstring content = extractJsonValue(httpResponse.body, L"content");
+    if (!content.empty()) {
+      response.success = true;
+      response.content = content;
+    }
+  }
+
+  if (!response.success) {
+    response.errorMessage = L"Failed to parse OpenRouter response";
+  }
+
+  return response;
+}
+
+ModelListResponse LLMApiClient::listOpenRouterModels(const std::wstring &apiKey) {
+  ModelListResponse response;
+
+  if (apiKey.empty()) {
+    response.errorMessage = L"OpenRouter API key is not configured";
+    return response;
+  }
+
+  std::map<std::wstring, std::wstring> headers;
+  headers[L"Authorization"] = L"Bearer " + apiKey;
+
+  HttpResponse httpResponse = HttpClient::get(L"https://openrouter.ai/api/v1/models", headers);
+  if (!httpResponse.success) {
+    response.errorMessage = L"HTTP request failed: " + httpResponse.errorMessage;
+    if (!httpResponse.body.empty()) {
+      std::wstring errorMsg = extractJsonValue(httpResponse.body, L"message");
+      if (!errorMsg.empty()) {
+        response.errorMessage += L"\n" + errorMsg;
+      }
+    }
+    return response;
+  }
+
+  // OpenRouter returns models in "data" array with "id" field
+  std::wregex idPattern(L"\"id\"\\s*:\\s*\"([^\"]+)\"");
+  for (std::wsregex_iterator it(httpResponse.body.begin(), httpResponse.body.end(),
+                                idPattern),
+       end;
+       it != end; ++it) {
+    const std::wstring model = (*it)[1].str();
+    // Filter to include only chat-capable models (exclude embedding, moderation, etc.)
+    if (model.find(L"embedding") == std::wstring::npos &&
+        model.find(L"moderation") == std::wstring::npos &&
+        model.find(L"tts") == std::wstring::npos &&
+        model.find(L"whisper") == std::wstring::npos &&
+        model.find(L"dall-e") == std::wstring::npos &&
+        model.find(L"stable-diffusion") == std::wstring::npos) {
+      addUniqueModel(response.models, model);
+    }
+  }
+
+  if (response.models.empty()) {
+    response.errorMessage = L"OpenRouter returned no chat models";
+    return response;
+  }
+
+  response.success = true;
+  return response;
+}
+
 CopilotDeviceCode LLMApiClient::initiateCopilotDeviceFlow() {
   CopilotDeviceCode result;
   

@@ -66,11 +66,17 @@ public:
   callClaude(const std::wstring &apiKey, const std::wstring &prompt,
              const std::wstring &model = L"claude-sonnet-4-20250514");
 
+  static LLMResponse callOpenRouter(const std::wstring &apiKey,
+                                    const std::wstring &prompt,
+                                    const std::wstring &model = L"meta-llama/llama-3.1-8b-instruct:free");
+
   static ModelListResponse listOpenAIModels(const std::wstring &apiKey);
 
   static ModelListResponse listGeminiModels(const std::wstring &apiKey);
 
   static ModelListResponse listClaudeModels(const std::wstring &apiKey);
+
+  static ModelListResponse listOpenRouterModels(const std::wstring &apiKey);
 
   static CopilotDeviceCode initiateCopilotDeviceFlow();
   

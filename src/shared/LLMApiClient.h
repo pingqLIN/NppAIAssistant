@@ -81,6 +81,10 @@ public:
       CompatibleApiMode mode, bool loopback = false,
       const StructuredOutputConfig &structuredOutput = {});
 
+  static LLMResponse callOpenRouter(const std::wstring &apiKey,
+                                    const std::wstring &prompt,
+                                    const std::wstring &model = L"meta-llama/llama-3.1-8b-instruct:free");
+
   static ModelListResponse listOpenAIModels(const std::wstring &apiKey);
 
   static ModelListResponse listGeminiModels(const std::wstring &apiKey);
@@ -89,6 +93,8 @@ public:
   static ModelListResponse listOpenAICompatibleModels(
       const std::wstring &baseUrl, const std::wstring &apiKey,
       bool loopback = false);
+
+  static ModelListResponse listOpenRouterModels(const std::wstring &apiKey);
 
   static CopilotDeviceCode initiateCopilotDeviceFlow();
   

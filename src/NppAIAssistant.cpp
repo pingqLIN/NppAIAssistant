@@ -32,9 +32,9 @@ constexpr UINT kAiContextRefactor = 2;
 constexpr UINT kAiContextComments = 3;
 constexpr UINT kAiContextFix = 4;
 
-enum class LLMProvider { OpenAI = 0, Gemini, Claude, Copilot, ProviderCount };
-constexpr std::array<LLMProvider, 3> kEnabledProviders = {
-    LLMProvider::OpenAI, LLMProvider::Gemini, LLMProvider::Claude};
+enum class LLMProvider { OpenAI = 0, Gemini, Claude, OpenRouter, Copilot, ProviderCount };
+constexpr std::array<LLMProvider, 4> kEnabledProviders = {
+    LLMProvider::OpenAI, LLMProvider::Gemini, LLMProvider::Claude, LLMProvider::OpenRouter};
 
 enum class UiLanguage {
   English,
@@ -105,6 +105,7 @@ enum class TextId {
   SettingsOpenAIKeyLabel,
   SettingsGeminiKeyLabel,
   SettingsClaudeKeyLabel,
+  SettingsOpenRouterKeyLabel,
   SettingsDefaultProviderGroup,
   SettingsDefaultProviderLabel,
   SettingsLanguageLabel,
@@ -113,6 +114,7 @@ enum class TextId {
   SettingsApiKeysOpenAIHint,
   SettingsApiKeysGeminiHint,
   SettingsApiKeysClaudeHint,
+  SettingsApiKeysOpenRouterHint,
   SettingsTestConnection,
   SettingsOk,
   SettingsCancel,
@@ -142,6 +144,7 @@ struct AIAssistantConfig {
   std::wstring openAIKey;
   std::wstring geminiKey;
   std::wstring claudeKey;
+  std::wstring openRouterKey;
   std::wstring copilotKey;
   std::wstring customPromptInstructions;
   LLMProvider defaultProvider = LLMProvider::OpenAI;
@@ -188,6 +191,7 @@ UiLanguage g_uiLanguage = UiLanguage::English;
 const wchar_t *kOpenAIKeyName = L"openai_apikey";
 const wchar_t *kGeminiKeyName = L"gemini_apikey";
 const wchar_t *kClaudeKeyName = L"claude_apikey";
+const wchar_t *kOpenRouterKeyName = L"openrouter_apikey";
 const wchar_t *kCopilotKeyName = L"copilot_apikey";
 const wchar_t *kCopilotOauthKeyName = L"copilot_oauth_token";
 const wchar_t *kDefaultProviderName = L"default_provider";
@@ -227,6 +231,8 @@ std::wstring getProviderName(LLMProvider provider) {
     return L"Gemini";
   case LLMProvider::Claude:
     return L"Claude";
+  case LLMProvider::OpenRouter:
+    return L"OpenRouter";
   case LLMProvider::Copilot:
     return L"Copilot";
   default:
@@ -322,6 +328,8 @@ const wchar_t *tr(TextId id) {
       return L"Gemini API Key:";
     case TextId::SettingsClaudeKeyLabel:
       return L"Claude API Key:";
+    case TextId::SettingsOpenRouterKeyLabel:
+      return L"OpenRouter API Key:";
     case TextId::SettingsDefaultProviderGroup:
       return L"\u9810\u8A2D\u4F9B\u61C9\u5546";
     case TextId::SettingsDefaultProviderLabel:
@@ -338,6 +346,8 @@ const wchar_t *tr(TextId id) {
       return L"Gemini: ai.google.dev - Get API Key";
     case TextId::SettingsApiKeysClaudeHint:
       return L"Claude: console.anthropic.com - API Keys";
+    case TextId::SettingsApiKeysOpenRouterHint:
+      return L"OpenRouter: openrouter.ai - Keys";
     case TextId::SettingsTestConnection:
       return L"\u6E2C\u8A66\u9810\u8A2D\u9023\u7DDA";
     case TextId::SettingsOk:
@@ -388,6 +398,8 @@ const wchar_t *tr(TextId id) {
     return L"Gemini API Key:";
   case TextId::SettingsClaudeKeyLabel:
     return L"Claude API Key:";
+  case TextId::SettingsOpenRouterKeyLabel:
+    return L"OpenRouter API Key:";
   case TextId::SettingsDefaultProviderGroup:
     return L"Default Provider";
   case TextId::SettingsDefaultProviderLabel:
@@ -404,6 +416,8 @@ const wchar_t *tr(TextId id) {
     return L"Gemini: ai.google.dev - Get API Key";
   case TextId::SettingsApiKeysClaudeHint:
     return L"Claude: console.anthropic.com - API Keys";
+  case TextId::SettingsApiKeysOpenRouterHint:
+    return L"OpenRouter: openrouter.ai - Keys";
   case TextId::SettingsTestConnection:
     return L"Test Default Connection";
   case TextId::SettingsOk:
@@ -1046,6 +1060,8 @@ std::wstring getProviderApiKey(LLMProvider provider) {
     return trimWhitespace(g_config.geminiKey);
   case LLMProvider::Claude:
     return trimWhitespace(g_config.claudeKey);
+  case LLMProvider::OpenRouter:
+    return trimWhitespace(g_config.openRouterKey);
   default:
     return L"";
   }
@@ -1254,6 +1270,7 @@ void loadConfig() {
   g_config.openAIKey = SecureStorage::loadApiKey(kOpenAIKeyName);
   g_config.geminiKey = SecureStorage::loadApiKey(kGeminiKeyName);
   g_config.claudeKey = SecureStorage::loadApiKey(kClaudeKeyName);
+  g_config.openRouterKey = SecureStorage::loadApiKey(kOpenRouterKeyName);
   g_config.copilotKey = SecureStorage::loadApiKey(kCopilotKeyName);
   if (SettingsStorage::loadSchemaVersion() >= kSettingsSchemaVersion) {
     loadPreferencesFromSettings(g_config);
@@ -1280,6 +1297,7 @@ void saveConfig(const AIAssistantConfig &config) {
   SecureStorage::saveApiKey(kOpenAIKeyName, config.openAIKey);
   SecureStorage::saveApiKey(kGeminiKeyName, config.geminiKey);
   SecureStorage::saveApiKey(kClaudeKeyName, config.claudeKey);
+  SecureStorage::saveApiKey(kOpenRouterKeyName, config.openRouterKey);
   SecureStorage::saveApiKey(kCopilotKeyName, config.copilotKey);
   savePreferencesToSettings(config);
   cleanupSecurePreferenceBlobs();
@@ -1619,6 +1637,8 @@ void applyLocalizedSettingsText(HWND hwnd) {
                    tr(TextId::SettingsGeminiKeyLabel));
   ::SetWindowTextW(::GetDlgItem(hwnd, IDC_CLAUDE_KEY_LABEL),
                    tr(TextId::SettingsClaudeKeyLabel));
+  ::SetWindowTextW(::GetDlgItem(hwnd, IDC_OPENROUTER_KEY_LABEL),
+                   tr(TextId::SettingsOpenRouterKeyLabel));
   ::SetWindowTextW(::GetDlgItem(hwnd, IDC_DEFAULT_PROVIDER_GROUP),
                    tr(TextId::SettingsDefaultProviderGroup));
   ::SetWindowTextW(::GetDlgItem(hwnd, IDC_DEFAULT_PROVIDER_LABEL),
@@ -1635,6 +1655,8 @@ void applyLocalizedSettingsText(HWND hwnd) {
                    tr(TextId::SettingsApiKeysGeminiHint));
   ::SetWindowTextW(::GetDlgItem(hwnd, IDC_API_KEYS_CLAUDE_HINT),
                    tr(TextId::SettingsApiKeysClaudeHint));
+  ::SetWindowTextW(::GetDlgItem(hwnd, IDC_API_KEYS_OPENROUTER_HINT),
+                   tr(TextId::SettingsApiKeysOpenRouterHint));
   ::SetWindowTextW(::GetDlgItem(hwnd, IDC_PROMPT_PROFILE_GROUP),
                    g_uiLanguage == UiLanguage::Chinese
                        ? L"\u55AE\u8F2A\u63D0\u793A\u8A5E\u8A2D\u5B9A"
@@ -1744,6 +1766,9 @@ void updateModelCombo() {
     break;
   case LLMProvider::Claude:
     response = LLMApiClient::listClaudeModels(apiKey);
+    break;
+  case LLMProvider::OpenRouter:
+    response = LLMApiClient::listOpenRouterModels(apiKey);
     break;
   default:
     populateModelComboPlaceholder(modelCombo, g_uiLanguage == UiLanguage::Chinese ? L"\u4F9B\u61C9\u5546\u7121\u6CD5\u4F7F\u7528" : L"Provider unavailable");
@@ -1991,6 +2016,8 @@ LLMResponse callCurrentProvider(const std::wstring &apiKey,
     return LLMApiClient::callGemini(apiKey, prompt, g_currentModel);
   case LLMProvider::Claude:
     return LLMApiClient::callClaude(apiKey, prompt, g_currentModel);
+  case LLMProvider::OpenRouter:
+    return LLMApiClient::callOpenRouter(apiKey, prompt, g_currentModel);
   default: {
     LLMResponse unsupported;
     unsupported.errorMessage = L"Unsupported provider";
@@ -2079,6 +2106,8 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwnd, UINT message, WPARAM wParam,
                      incoming->geminiKey.c_str());
     ::SetWindowTextW(::GetDlgItem(hwnd, IDC_CLAUDE_KEY_EDIT),
                      incoming->claudeKey.c_str());
+    ::SetWindowTextW(::GetDlgItem(hwnd, IDC_OPENROUTER_KEY_EDIT),
+                     incoming->openRouterKey.c_str());
 
     HWND providerCombo = ::GetDlgItem(hwnd, IDC_DEFAULT_PROVIDER_COMBO);
     ::SendMessageW(providerCombo, CB_RESETCONTENT, 0, 0);
@@ -2101,6 +2130,8 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwnd, UINT message, WPARAM wParam,
     ::SendMessageW(::GetDlgItem(hwnd, IDC_GEMINI_KEY_EDIT), EM_SETPASSWORDCHAR,
                    maskChar, 0);
     ::SendMessageW(::GetDlgItem(hwnd, IDC_CLAUDE_KEY_EDIT), EM_SETPASSWORDCHAR,
+                   maskChar, 0);
+    ::SendMessageW(::GetDlgItem(hwnd, IDC_OPENROUTER_KEY_EDIT), EM_SETPASSWORDCHAR,
                    maskChar, 0);
     ::SendMessageW(::GetDlgItem(hwnd, IDC_SEND_SHORTCUT_CHECK), BM_SETCHECK,
                    incoming->requireCtrlEnterToSend ? BST_CHECKED : BST_UNCHECKED,
@@ -2183,6 +2214,10 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwnd, UINT message, WPARAM wParam,
         apiKey = config->claudeKey;
         providerName = L"Claude";
         break;
+      case LLMProvider::OpenRouter:
+        apiKey = config->openRouterKey;
+        providerName = L"OpenRouter";
+        break;
       default:
         return TRUE;
       }
@@ -2205,6 +2240,8 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwnd, UINT message, WPARAM wParam,
         testResponse = LLMApiClient::listGeminiModels(apiKey);
       } else if (provider == LLMProvider::Claude) {
         testResponse = LLMApiClient::listClaudeModels(apiKey);
+      } else if (provider == LLMProvider::OpenRouter) {
+        testResponse = LLMApiClient::listOpenRouterModels(apiKey);
       }
       ::SetCursor(oldCursor);
 
@@ -2250,6 +2287,8 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwnd, UINT message, WPARAM wParam,
       config->geminiKey = trimWhitespace(text);
       ::GetWindowTextW(::GetDlgItem(hwnd, IDC_CLAUDE_KEY_EDIT), text, 512);
       config->claudeKey = trimWhitespace(text);
+      ::GetWindowTextW(::GetDlgItem(hwnd, IDC_OPENROUTER_KEY_EDIT), text, 512);
+      config->openRouterKey = trimWhitespace(text);
       SecureZeroMemory(text, sizeof(text));
       capturePromptSettingsFromDialog(hwnd, *config);
 

@@ -2729,9 +2729,16 @@ LRESULT CALLBACK ScintillaSubclassProc(HWND hwnd, UINT message, WPARAM wParam,
     return ::DefWindowProcW(hwnd, message, wParam, lParam);
   }
 
-  if (message == WM_CONTEXTMENU && !getSelectionText(hwnd).empty()) {
-    showAiContextMenu(hwnd, lParam);
-    return 0;
+  if (message == WM_CONTEXTMENU) {
+    const bool hasSelection = !getSelectionText(hwnd).empty();
+    const bool ctrlPressed = (::GetKeyState(VK_CONTROL) & 0x8000) != 0;
+
+    if (hasSelection && ctrlPressed) {
+      showAiContextMenu(hwnd, lParam);
+      return 0;
+    }
+
+    return ::CallWindowProcW(original, hwnd, message, wParam, lParam);
   }
 
   return ::CallWindowProcW(original, hwnd, message, wParam, lParam);

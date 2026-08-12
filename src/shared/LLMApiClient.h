@@ -56,7 +56,12 @@ class LLMApiClient {
 public:
   static LLMResponse callOpenAI(const std::wstring &apiKey,
                                 const std::wstring &prompt,
-                                const std::wstring &model = L"gpt-4o-mini");
+                                const std::wstring &model = L"gpt-4o");
+
+  static LLMResponse callLocalAI(const std::wstring &baseUrl,
+                                 const std::wstring &apiKey,
+                                 const std::wstring &prompt,
+                                 const std::wstring &model);
 
   static LLMResponse callGemini(const std::wstring &apiKey,
                                 const std::wstring &prompt,
@@ -77,6 +82,9 @@ public:
   static ModelListResponse listClaudeModels(const std::wstring &apiKey);
 
   static ModelListResponse listOpenRouterModels(const std::wstring &apiKey);
+
+  static ModelListResponse listLocalAIModels(const std::wstring &baseUrl,
+                                             const std::wstring &apiKey);
 
   static CopilotDeviceCode initiateCopilotDeviceFlow();
   

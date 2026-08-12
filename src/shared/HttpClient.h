@@ -51,11 +51,11 @@ public:
         const std::map<std::wstring, std::wstring>& headers
     );
     
-    // Set timeout in milliseconds (default: 30000)
+    // Set timeout in milliseconds (default: 120000)
     static void setTimeout(DWORD timeoutMs) { _timeoutMs = timeoutMs; }
     
 private:
-    static constexpr DWORD DEFAULT_TIMEOUT_MS = 30000;
+    static constexpr DWORD DEFAULT_TIMEOUT_MS = 120000;
     static DWORD _timeoutMs;
     
     // Parse URL into components

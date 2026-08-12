@@ -121,6 +121,14 @@ bool isLikelyOpenAIChatModel(const std::wstring &model) {
          startsWith(model, L"o4");
 }
 
+std::wstring ensureTrailingSlashStripped(const std::wstring &url) {
+  std::wstring result = url;
+  while (!result.empty() && result.back() == L'/') {
+    result.pop_back();
+  }
+  return result;
+}
+
 }
 
 
@@ -490,7 +498,6 @@ LLMResponse LLMApiClient::callOpenAI(const std::wstring &apiKey,
     return response;
   }
 
-  // Build request body
   std::wstring escapedPrompt = escapeJsonString(prompt);
   std::wstring requestBody =
       L"{\"model\":\"" + model +
@@ -500,12 +507,10 @@ LLMResponse LLMApiClient::callOpenAI(const std::wstring &apiKey,
       L"\"}],"
       L"\"max_tokens\":2048}";
 
-  // Set headers
   std::map<std::wstring, std::wstring> headers;
   headers[L"Content-Type"] = L"application/json";
   headers[L"Authorization"] = L"Bearer " + apiKey;
 
-  // Make request
   HttpResponse httpResponse = HttpClient::post(
       L"https://api.openai.com/v1/chat/completions", requestBody, headers);
 
@@ -513,7 +518,6 @@ LLMResponse LLMApiClient::callOpenAI(const std::wstring &apiKey,
     response.errorMessage =
         L"HTTP request failed: " + httpResponse.errorMessage;
     if (!httpResponse.body.empty()) {
-      // Try to extract error message from response
       std::wstring errorMsg = extractJsonValue(httpResponse.body, L"message");
       if (!errorMsg.empty())
         response.errorMessage += L"\n" + errorMsg;
@@ -521,11 +525,8 @@ LLMResponse LLMApiClient::callOpenAI(const std::wstring &apiKey,
     return response;
   }
 
-  // Parse response - extract content from choices[0].message.content
-  // First find the choices array
   size_t choicesPos = httpResponse.body.find(L"\"choices\"");
   if (choicesPos != std::wstring::npos) {
-    // Find the content field within the message
     std::wstring content = extractJsonValue(httpResponse.body, L"content");
     if (!content.empty()) {
       response.success = true;
@@ -537,6 +538,109 @@ LLMResponse LLMApiClient::callOpenAI(const std::wstring &apiKey,
     response.errorMessage = L"Failed to parse OpenAI response";
   }
 
+  return response;
+}
+
+LLMResponse LLMApiClient::callLocalAI(const std::wstring &baseUrl,
+                                      const std::wstring &apiKey,
+                                      const std::wstring &prompt,
+                                      const std::wstring &model) {
+  LLMResponse response;
+
+  if (baseUrl.empty()) {
+    response.errorMessage = L"Local AI base URL is not configured";
+    return response;
+  }
+
+  std::wstring url = ensureTrailingSlashStripped(baseUrl) + L"/chat/completions";
+
+  std::wstring escapedPrompt = escapeJsonString(prompt);
+  std::wstring requestBody =
+      L"{\"model\":\"" + model +
+      L"\","
+      L"\"messages\":[{\"role\":\"user\",\"content\":\"" +
+      escapedPrompt +
+      L"\"}],"
+      L"\"max_tokens\":2048}";
+
+  std::map<std::wstring, std::wstring> headers;
+  headers[L"Content-Type"] = L"application/json";
+  if (!apiKey.empty()) {
+    headers[L"Authorization"] = L"Bearer " + apiKey;
+  }
+
+  HttpResponse httpResponse = HttpClient::post(url, requestBody, headers);
+
+  if (!httpResponse.success) {
+    response.errorMessage =
+        L"HTTP request failed: " + httpResponse.errorMessage;
+    if (!httpResponse.body.empty()) {
+      std::wstring errorMsg = extractJsonValue(httpResponse.body, L"message");
+      if (!errorMsg.empty())
+        response.errorMessage += L"\n" + errorMsg;
+    }
+    return response;
+  }
+
+  size_t choicesPos = httpResponse.body.find(L"\"choices\"");
+  if (choicesPos != std::wstring::npos) {
+    std::wstring content = extractJsonValue(httpResponse.body, L"content");
+    if (!content.empty()) {
+      response.success = true;
+      response.content = content;
+    }
+  }
+
+  if (!response.success) {
+    response.errorMessage = L"Failed to parse Local AI response";
+  }
+
+  return response;
+}
+
+ModelListResponse LLMApiClient::listLocalAIModels(const std::wstring &baseUrl,
+                                                  const std::wstring &apiKey) {
+  ModelListResponse response;
+
+  if (baseUrl.empty()) {
+    response.errorMessage = L"Local AI base URL is not configured";
+    return response;
+  }
+
+  std::wstring url = ensureTrailingSlashStripped(baseUrl) + L"/models";
+
+  std::map<std::wstring, std::wstring> headers;
+  if (!apiKey.empty()) {
+    headers[L"Authorization"] = L"Bearer " + apiKey;
+  }
+
+  HttpResponse httpResponse = HttpClient::get(url, headers);
+  if (!httpResponse.success) {
+    response.errorMessage = L"HTTP request failed: " + httpResponse.errorMessage;
+    if (!httpResponse.body.empty()) {
+      std::wstring errorMsg = extractJsonValue(httpResponse.body, L"message");
+      if (!errorMsg.empty()) {
+        response.errorMessage += L"\n" + errorMsg;
+      }
+    }
+    return response;
+  }
+
+  // Accept all model IDs from local endpoints (no prefix filtering)
+  std::wregex idPattern(L"\"id\"\\s*:\\s*\"([^\"]+)\"");
+  for (std::wsregex_iterator it(httpResponse.body.begin(), httpResponse.body.end(),
+                                idPattern),
+       end;
+       it != end; ++it) {
+    addUniqueModel(response.models, (*it)[1].str());
+  }
+
+  if (response.models.empty()) {
+    response.errorMessage = L"Local AI endpoint returned no models";
+    return response;
+  }
+
+  response.success = true;
   return response;
 }
 

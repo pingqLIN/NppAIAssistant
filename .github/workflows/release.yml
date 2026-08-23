@@ -37,6 +37,8 @@ jobs:
       - name: Resolve release metadata
         id: meta
         shell: pwsh
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
         run: |
           if ($env:GITHUB_REF_TYPE -eq 'tag') {
             $tag = $env:GITHUB_REF_NAME
@@ -46,7 +48,7 @@ jobs:
             $version = $tag.Substring(1)
           }
           else {
-            $version = '${{ inputs.version }}'.Trim()
+            $version = $env:REQUESTED_VERSION.Trim()
             if ($version -notmatch '^\d+(\.\d+){3}$') {
               throw "workflow_dispatch version must use X.Y.Z.W. Got '$version'."
             }
@@ -136,9 +138,14 @@ jobs:
       - name: Validate generated entry against current official schema
         shell: pwsh
         run: |
-          & .\scripts\validate-npp-plugin-entry.ps1 `
-            -EntryPath '.\dist\NppAIAssistant-${{ steps.meta.outputs.version }}-x64.npp-plugin-entry.json' `
-            -Architecture '64'
+          $params = @{
+            EntryPath = '.\dist\NppAIAssistant-${{ steps.meta.outputs.version }}-x64.npp-plugin-entry.json'
+            Architecture = '64'
+          }
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            $params.RequireDirectHttpsZip = $true
+          }
+          & .\scripts\validate-npp-plugin-entry.ps1 @params
 
       - name: Compute canonical SHA-256
         id: hash

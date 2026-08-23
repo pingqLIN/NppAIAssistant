@@ -1,6 +1,15 @@
 name: Release
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/release.yml'
+      - 'scripts/package-npp-ai-plugin.ps1'
+      - 'scripts/verify-release-readiness.ps1'
+      - 'scripts/validate-npp-plugin-entry.ps1'
+      - 'scripts/smoke-package-install.ps1'
+      - 'plugin-admin-metadata.json'
+      - 'src/NppAIAssistantVersion.h'
   workflow_dispatch:
     inputs:
       version:
@@ -47,11 +56,33 @@ jobs:
             }
             $version = $tag.Substring(1)
           }
-          else {
+          elseif ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') {
             $version = $env:REQUESTED_VERSION.Trim()
             if ($version -notmatch '^\d+(\.\d+){3}$') {
               throw "workflow_dispatch version must use X.Y.Z.W. Got '$version'."
             }
+          }
+          elseif ($env:GITHUB_EVENT_NAME -eq 'pull_request') {
+            $headerPath = Join-Path $PWD 'src\NppAIAssistantVersion.h'
+            $header = Get-Content -LiteralPath $headerPath -Raw
+
+            function Get-VersionPart([string]$macroName) {
+              $pattern = "(?m)^\s*#define\s+$macroName\s+(\d+)\s*$"
+              $match = [regex]::Match($header, $pattern)
+              if (-not $match.Success) {
+                throw "Version macro '$macroName' was not found in $headerPath."
+              }
+              return [int]$match.Groups[1].Value
+            }
+
+            $major = Get-VersionPart 'NPPAI_VERSION_MAJOR'
+            $minor = Get-VersionPart 'NPPAI_VERSION_MINOR'
+            $patch = Get-VersionPart 'NPPAI_VERSION_PATCH'
+            $build = Get-VersionPart 'NPPAI_VERSION_BUILD'
+            $version = "$major.$minor.$patch.$build"
+          }
+          else {
+            throw "Unsupported event '$($env:GITHUB_EVENT_NAME)' for release packaging."
           }
 
           $zipName = "NppAIAssistant-$version-x64.zip"
@@ -112,6 +143,10 @@ jobs:
           }
           finally {
             $zip.Dispose()
+          }
+
+          if (Test-Path -LiteralPath '.\scripts\smoke-package-install.ps1') {
+            & .\scripts\smoke-package-install.ps1
           }
 
           if (Test-Path -LiteralPath '.\scripts\verify-release-readiness.ps1') {

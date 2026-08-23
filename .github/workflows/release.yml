@@ -1,0 +1,337 @@
+name: Release
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/release.yml'
+      - 'scripts/package-npp-ai-plugin.ps1'
+      - 'scripts/verify-release-readiness.ps1'
+      - 'scripts/validate-npp-plugin-entry.ps1'
+      - 'scripts/smoke-package-install.ps1'
+      - 'plugin-admin-metadata.json'
+      - 'src/NppAIAssistantVersion.h'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Four-part DLL version to package, for example 0.2.0.0
+        required: true
+        type: string
+  push:
+    tags:
+      - 'v*.*.*.*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package-x64:
+    name: Build and package canonical x64 asset
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      zip_name: ${{ steps.meta.outputs.zip_name }}
+      sha256: ${{ steps.hash.outputs.sha256 }}
+      release_url: ${{ steps.meta.outputs.release_url }}
+
+    steps:
+      - name: Checkout release source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release metadata
+        id: meta
+        shell: pwsh
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            $tag = $env:GITHUB_REF_NAME
+            if ($tag -notmatch '^v\d+(\.\d+){3}$') {
+              throw "Release tags must use a four-part version: vX.Y.Z.W. Got '$tag'."
+            }
+            $version = $tag.Substring(1)
+          }
+          elseif ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') {
+            $version = $env:REQUESTED_VERSION.Trim()
+            if ($version -notmatch '^\d+(\.\d+){3}$') {
+              throw "workflow_dispatch version must use X.Y.Z.W. Got '$version'."
+            }
+          }
+          elseif ($env:GITHUB_EVENT_NAME -eq 'pull_request') {
+            $headerPath = Join-Path $PWD 'src\NppAIAssistantVersion.h'
+            $header = Get-Content -LiteralPath $headerPath -Raw
+
+            function Get-VersionPart([string]$macroName) {
+              $pattern = "(?m)^\s*#define\s+$macroName\s+(\d+)\s*$"
+              $match = [regex]::Match($header, $pattern)
+              if (-not $match.Success) {
+                throw "Version macro '$macroName' was not found in $headerPath."
+              }
+              return [int]$match.Groups[1].Value
+            }
+
+            $major = Get-VersionPart 'NPPAI_VERSION_MAJOR'
+            $minor = Get-VersionPart 'NPPAI_VERSION_MINOR'
+            $patch = Get-VersionPart 'NPPAI_VERSION_PATCH'
+            $build = Get-VersionPart 'NPPAI_VERSION_BUILD'
+            $version = "$major.$minor.$patch.$build"
+          }
+          else {
+            throw "Unsupported event '$($env:GITHUB_EVENT_NAME)' for release packaging."
+          }
+
+          $zipName = "NppAIAssistant-$version-x64.zip"
+          $releaseUrl = ''
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            $releaseUrl = "https://github.com/${{ github.repository }}/releases/download/$($env:GITHUB_REF_NAME)/$zipName"
+          }
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "zip_name=$zipName" >> $env:GITHUB_OUTPUT
+          "release_url=$releaseUrl" >> $env:GITHUB_OUTPUT
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build x64 Release DLL
+        shell: pwsh
+        run: >-
+          msbuild NppAIAssistant.vcxproj
+          /m
+          /p:Configuration=Release
+          /p:Platform=x64
+
+      - name: Create canonical package exactly once
+        shell: pwsh
+        run: |
+          $params = @{
+            Version = '${{ steps.meta.outputs.version }}'
+            Platform = 'x64'
+            Configuration = 'Release'
+          }
+
+          $releaseUrl = '${{ steps.meta.outputs.release_url }}'
+          if (-not [string]::IsNullOrWhiteSpace($releaseUrl)) {
+            $params.ReleaseUrl = $releaseUrl
+          }
+
+          & .\scripts\package-npp-ai-plugin.ps1 @params
+
+      - name: Verify canonical ZIP layout
+        shell: pwsh
+        run: |
+          $zipPath = Join-Path $PWD 'dist\${{ steps.meta.outputs.zip_name }}'
+          if (-not (Test-Path -LiteralPath $zipPath)) {
+            throw "Canonical ZIP was not created: $zipPath"
+          }
+
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+          try {
+            $names = @($zip.Entries | ForEach-Object { $_.FullName -replace '\\', '/' })
+            if ($names -notcontains 'NppAIAssistant.dll') {
+              throw 'NppAIAssistant.dll is not at the ZIP root.'
+            }
+            if ($names | Where-Object { $_.EndsWith('.pdb', [System.StringComparison]::OrdinalIgnoreCase) }) {
+              throw 'Release ZIP must not contain PDB files.'
+            }
+          }
+          finally {
+            $zip.Dispose()
+          }
+
+          if (Test-Path -LiteralPath '.\scripts\smoke-package-install.ps1') {
+            & .\scripts\smoke-package-install.ps1
+          }
+
+          if (Test-Path -LiteralPath '.\scripts\verify-release-readiness.ps1') {
+            $verifyArgs = @{
+              Platform = 'x64'
+              Configuration = 'Release'
+              Version = '${{ steps.meta.outputs.version }}'
+            }
+            if ($env:GITHUB_REF_TYPE -eq 'tag') {
+              $verifyArgs.RequirePluginsAdminReady = $true
+            }
+            & .\scripts\verify-release-readiness.ps1 @verifyArgs
+          }
+
+      - name: Confirm hosted Python and install official schema dependency
+        shell: pwsh
+        run: |
+          python --version
+          python -m pip install --disable-pip-version-check jsonschema==4.25.1
+
+      - name: Validate generated entry against current official schema
+        shell: pwsh
+        run: |
+          $params = @{
+            EntryPath = '.\dist\NppAIAssistant-${{ steps.meta.outputs.version }}-x64.npp-plugin-entry.json'
+            Architecture = '64'
+          }
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            $params.RequireDirectHttpsZip = $true
+          }
+          & .\scripts\validate-npp-plugin-entry.ps1 @params
+
+      - name: Compute canonical SHA-256
+        id: hash
+        shell: pwsh
+        run: |
+          $zipName = '${{ steps.meta.outputs.zip_name }}'
+          $zipPath = Join-Path $PWD "dist\$zipName"
+          $hash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToUpperInvariant()
+          $checksumPath = Join-Path $PWD "dist\$zipName.sha256"
+          "$hash  $zipName" | Set-Content -LiteralPath $checksumPath -Encoding ascii
+          "sha256=$hash" >> $env:GITHUB_OUTPUT
+          Write-Host "Canonical ZIP SHA-256: $hash"
+
+      - name: Upload canonical package artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: NppAIAssistant-release-${{ steps.meta.outputs.version }}-x64
+          path: |
+            dist/${{ steps.meta.outputs.zip_name }}
+            dist/${{ steps.meta.outputs.zip_name }}.sha256
+            dist/NppAIAssistant-${{ steps.meta.outputs.version }}-x64.plugin-admin.json
+            dist/NppAIAssistant-${{ steps.meta.outputs.version }}-x64.npp-plugin-entry.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Record package evidence
+        shell: pwsh
+        run: |
+          @"
+          ## Canonical x64 package
+
+          - Version: ${{ steps.meta.outputs.version }}
+          - Asset: ${{ steps.meta.outputs.zip_name }}
+          - SHA-256: ${{ steps.hash.outputs.sha256 }}
+          - Ref: ${{ github.ref }}
+          - Commit: ${{ github.sha }}
+          "@ >> $env:GITHUB_STEP_SUMMARY
+
+  publish:
+    name: Verify draft asset, publish, and verify public download
+    needs: package-x64
+    if: github.ref_type == 'tag'
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+
+    steps:
+      - name: Download canonical package artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: NppAIAssistant-release-${{ needs.package-x64.outputs.version }}-x64
+          path: release-artifact
+
+      - name: Verify artifact before GitHub upload
+        shell: pwsh
+        run: |
+          $zip = Join-Path $PWD 'release-artifact\${{ needs.package-x64.outputs.zip_name }}'
+          if (-not (Test-Path -LiteralPath $zip)) {
+            throw "Downloaded canonical ZIP is missing: $zip"
+          }
+          $actual = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToUpperInvariant()
+          $expected = '${{ needs.package-x64.outputs.sha256 }}'
+          if ($actual -ne $expected) {
+            throw "Artifact hash changed between jobs. Expected $expected; got $actual."
+          }
+
+      - name: Create draft GitHub Release from existing tag
+        shell: pwsh
+        run: |
+          $zip = Join-Path $PWD 'release-artifact\${{ needs.package-x64.outputs.zip_name }}'
+          $checksum = "$zip.sha256"
+
+          if (-not (Test-Path -LiteralPath $checksum)) {
+            throw "Canonical checksum file is missing: $checksum"
+          }
+
+          gh release create $env:GITHUB_REF_NAME `
+            $zip `
+            $checksum `
+            --repo $env:GH_REPO `
+            --verify-tag `
+            --generate-notes `
+            --fail-on-no-commits `
+            --draft `
+            --title "NppAIAssistant v${{ needs.package-x64.outputs.version }}"
+
+      - name: Re-download draft asset and verify storage bytes
+        shell: pwsh
+        run: |
+          $draftDir = Join-Path $env:RUNNER_TEMP 'draft-release-check'
+          New-Item -ItemType Directory -Force -Path $draftDir | Out-Null
+
+          gh release download $env:GITHUB_REF_NAME `
+            --repo $env:GH_REPO `
+            --pattern '${{ needs.package-x64.outputs.zip_name }}' `
+            --dir $draftDir
+
+          $download = Join-Path $draftDir '${{ needs.package-x64.outputs.zip_name }}'
+          $actual = (Get-FileHash -LiteralPath $download -Algorithm SHA256).Hash.ToUpperInvariant()
+          $expected = '${{ needs.package-x64.outputs.sha256 }}'
+          if ($actual -ne $expected) {
+            throw "Draft release asset hash mismatch. Expected $expected; got $actual. The release remains a draft for investigation."
+          }
+
+      - name: Publish verified draft Release
+        shell: pwsh
+        run: |
+          gh release edit $env:GITHUB_REF_NAME `
+            --repo $env:GH_REPO `
+            --draft=false `
+            --latest
+
+      - name: Download published ZIP and verify SHA-256
+        shell: pwsh
+        run: |
+          $url = '${{ needs.package-x64.outputs.release_url }}'
+          if ([string]::IsNullOrWhiteSpace($url)) {
+            throw 'Release URL output is empty for a tag build.'
+          }
+
+          $download = Join-Path $env:RUNNER_TEMP 'public-${{ needs.package-x64.outputs.zip_name }}'
+          $lastError = $null
+          for ($attempt = 1; $attempt -le 4; $attempt++) {
+            try {
+              Invoke-WebRequest -Uri $url -OutFile $download -MaximumRedirection 10
+              $lastError = $null
+              break
+            }
+            catch {
+              $lastError = $_
+              if ($attempt -lt 4) {
+                Start-Sleep -Seconds 5
+              }
+            }
+          }
+          if ($null -ne $lastError) {
+            throw $lastError
+          }
+
+          $actual = (Get-FileHash -LiteralPath $download -Algorithm SHA256).Hash.ToUpperInvariant()
+          $expected = '${{ needs.package-x64.outputs.sha256 }}'
+          if ($actual -ne $expected) {
+            throw "Published release asset hash mismatch. Expected $expected; got $actual."
+          }
+
+          $releasePage = "https://github.com/${{ github.repository }}/releases/tag/$($env:GITHUB_REF_NAME)"
+          @"
+          ## Published asset verification
+
+          - Release: $releasePage
+          - Direct ZIP: $url
+          - SHA-256: $actual
+          - Result: PASS
+          "@ >> $env:GITHUB_STEP_SUMMARY

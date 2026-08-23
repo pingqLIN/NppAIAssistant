@@ -124,6 +124,22 @@ jobs:
             & .\scripts\verify-release-readiness.ps1 @verifyArgs
           }
 
+      - name: Set up Python for official schema validation
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+
+      - name: Install official schema validator dependency
+        shell: pwsh
+        run: python -m pip install --disable-pip-version-check jsonschema==4.25.1
+
+      - name: Validate generated entry against current official schema
+        shell: pwsh
+        run: |
+          & .\scripts\validate-npp-plugin-entry.ps1 `
+            -EntryPath '.\dist\NppAIAssistant-${{ steps.meta.outputs.version }}-x64.npp-plugin-entry.json' `
+            -Architecture '64'
+
       - name: Compute canonical SHA-256
         id: hash
         shell: pwsh
@@ -154,11 +170,11 @@ jobs:
           @"
           ## Canonical x64 package
 
-          - Version: `${{ steps.meta.outputs.version }}`
-          - Asset: `${{ steps.meta.outputs.zip_name }}`
-          - SHA-256: `${{ steps.hash.outputs.sha256 }}`
-          - Ref: `${{ github.ref }}`
-          - Commit: `${{ github.sha }}`
+          - Version: ${{ steps.meta.outputs.version }}
+          - Asset: ${{ steps.meta.outputs.zip_name }}
+          - SHA-256: ${{ steps.hash.outputs.sha256 }}
+          - Ref: ${{ github.ref }}
+          - Commit: ${{ github.sha }}
           "@ >> $env:GITHUB_STEP_SUMMARY
 
   publish:
@@ -237,8 +253,8 @@ jobs:
           @"
           ## Published asset verification
 
-          - Release: `${{ steps.release.outputs.url }}`
-          - Direct ZIP: `$url`
-          - SHA-256: `$actual`
-          - Result: `PASS`
+          - Release: ${{ steps.release.outputs.url }}
+          - Direct ZIP: $url
+          - SHA-256: $actual
+          - Result: PASS
           "@ >> $env:GITHUB_STEP_SUMMARY

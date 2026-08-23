@@ -185,12 +185,15 @@ jobs:
           "@ >> $env:GITHUB_STEP_SUMMARY
 
   publish:
-    name: Publish exact canonical asset and verify download
+    name: Verify draft asset, publish, and verify public download
     needs: package-x64
     if: github.ref_type == 'tag'
     runs-on: windows-latest
     permissions:
       contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
 
     steps:
       - name: Download canonical package artifact
@@ -199,7 +202,7 @@ jobs:
           name: NppAIAssistant-release-${{ needs.package-x64.outputs.version }}-x64
           path: release-artifact
 
-      - name: Verify artifact before publication
+      - name: Verify artifact before GitHub upload
         shell: pwsh
         run: |
           $zip = Join-Path $PWD 'release-artifact\${{ needs.package-x64.outputs.zip_name }}'
@@ -212,11 +215,8 @@ jobs:
             throw "Artifact hash changed between jobs. Expected $expected; got $actual."
           }
 
-      - name: Publish GitHub Release from existing tag
+      - name: Create draft GitHub Release from existing tag
         shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
         run: |
           $zip = Join-Path $PWD 'release-artifact\${{ needs.package-x64.outputs.zip_name }}'
           $checksum = "$zip.sha256"
@@ -232,7 +232,34 @@ jobs:
             --verify-tag `
             --generate-notes `
             --fail-on-no-commits `
+            --draft `
             --title "NppAIAssistant v${{ needs.package-x64.outputs.version }}"
+
+      - name: Re-download draft asset and verify storage bytes
+        shell: pwsh
+        run: |
+          $draftDir = Join-Path $env:RUNNER_TEMP 'draft-release-check'
+          New-Item -ItemType Directory -Force -Path $draftDir | Out-Null
+
+          gh release download $env:GITHUB_REF_NAME `
+            --repo $env:GH_REPO `
+            --pattern '${{ needs.package-x64.outputs.zip_name }}' `
+            --dir $draftDir
+
+          $download = Join-Path $draftDir '${{ needs.package-x64.outputs.zip_name }}'
+          $actual = (Get-FileHash -LiteralPath $download -Algorithm SHA256).Hash.ToUpperInvariant()
+          $expected = '${{ needs.package-x64.outputs.sha256 }}'
+          if ($actual -ne $expected) {
+            throw "Draft release asset hash mismatch. Expected $expected; got $actual. The release remains a draft for investigation."
+          }
+
+      - name: Publish verified draft Release
+        shell: pwsh
+        run: |
+          gh release edit $env:GITHUB_REF_NAME `
+            --repo $env:GH_REPO `
+            --draft=false `
+            --latest
 
       - name: Download published ZIP and verify SHA-256
         shell: pwsh
@@ -242,7 +269,7 @@ jobs:
             throw 'Release URL output is empty for a tag build.'
           }
 
-          $download = Join-Path $env:RUNNER_TEMP '${{ needs.package-x64.outputs.zip_name }}'
+          $download = Join-Path $env:RUNNER_TEMP 'public-${{ needs.package-x64.outputs.zip_name }}'
           $lastError = $null
           for ($attempt = 1; $attempt -le 4; $attempt++) {
             try {

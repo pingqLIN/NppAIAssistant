@@ -32,6 +32,15 @@ struct HttpResponse {
     std::wstring errorMessage;
 };
 
+// Request-local transport controls.  The caller owns this immutable snapshot;
+// keeping it per request prevents settings changes from affecting in-flight work.
+struct HttpRequestOptions {
+    DWORD timeoutMs = 30000;
+    bool bypassProxy = false;
+    bool disableRedirects = false;
+    size_t maxResponseBytes = 4 * 1024 * 1024;
+};
+
 // Simple HTTP client wrapper using WinHTTP
 class HttpClient {
 public:
@@ -39,25 +48,22 @@ public:
     static HttpResponse post(
         const std::wstring& url,
         const std::wstring& body,
-        const std::map<std::wstring, std::wstring>& headers
+        const std::map<std::wstring, std::wstring>& headers,
+        const HttpRequestOptions& options = HttpRequestOptions{}
     );
     
     // GET request
-    static HttpResponse get(const std::wstring& url);
+    static HttpResponse get(const std::wstring& url,
+                            const HttpRequestOptions& options = HttpRequestOptions{});
     
     // GET request with headers
     static HttpResponse get(
         const std::wstring& url,
-        const std::map<std::wstring, std::wstring>& headers
+        const std::map<std::wstring, std::wstring>& headers,
+        const HttpRequestOptions& options = HttpRequestOptions{}
     );
     
-    // Set timeout in milliseconds (default: 30000)
-    static void setTimeout(DWORD timeoutMs) { _timeoutMs = timeoutMs; }
-    
 private:
-    static constexpr DWORD DEFAULT_TIMEOUT_MS = 30000;
-    static DWORD _timeoutMs;
-    
     // Parse URL into components
     static bool parseUrl(
         const std::wstring& url,

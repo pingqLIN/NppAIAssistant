@@ -1,187 +1,106 @@
-<p align="center">
-  <strong>NppAIAssistant</strong><br>
-  A lightweight AI assistant plugin for Notepad++
-</p>
+# NppAIAssistant
 
-<p align="center">
-  <a href="https://github.com/pingqLIN/NppAIAssistant/releases/tag/v0.1.0"><img src="https://img.shields.io/github/v/release/pingqLIN/NppAIAssistant?label=release" alt="Release"></a>
-  <a href="https://github.com/pingqLIN/NppAIAssistant/releases"><img src="https://img.shields.io/github/downloads/pingqLIN/NppAIAssistant/total" alt="Downloads"></a>
-  <a href="https://notepad-plus-plus.org/"><img src="https://img.shields.io/badge/platform-Windows-0078D6" alt="Platform"></a>
-  <a href="https://notepad-plus-plus.org/"><img src="https://img.shields.io/badge/Notepad++-Plugin-90E59A" alt="Notepad++"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="License"></a>
-  <a href="https://github.com/notepad-plus-plus/nppPluginList/pull/1051"><img src="https://img.shields.io/badge/Plugins%20Admin-PR%20submitted-success" alt="Plugins Admin PR"></a>
-</p>
+A Windows Notepad++ plugin for explicit, single-turn AI assistance while you
+edit. It keeps the prompt-building controls visible, lets you work from the AI
+panel or a deliberate context-menu gesture, and does not retain hidden chat
+memory between requests.
 
-<p align="center">
-  <a href="README_zh-TW.md">繁體中文</a>
-</p>
+[繁體中文](README_zh-TW.md)
 
----
+## Start here
 
-Visible prompts, modular single-turn profiles, and no hidden memory between requests.
-
-This repository is focused on the plugin itself. It does not carry the full Notepad++ source history, which keeps the project easier to publish, review, package, and release.
-
-## Table of Contents
-
-- [Why It Stands Out](#why-it-stands-out)
-- [Security and Settings Storage](#security-and-settings-storage)
-- [Screenshots](#screenshots)
-- [Build](#build)
-- [Install](#install)
-- [Repository Layout](#repository-layout)
-- [Release and Plugins Admin](#release-and-plugins-admin)
-
-## Why It Stands Out
-
-| Feature | Description |
-|---------|-------------|
-| **Lightweight** | Ships as a standard Notepad++ plugin with no core fork |
-| **Prompt visibility** | Live preview of the exact prompt structure in settings |
-| **Prompt sections** | Mandatory transparency, identity, rules, system, assignment, and user request blocks are assembled visibly |
-| **Template controls** | Identity, rules, and assignment templates can be edited, token-inserted, and reset |
-| **Estimated token summary** | Settings preview shows per-section and total estimated tokens |
-| **Display scale** | AI panel text scale persists through the `A+` and `A-` controls |
-| **Waiting state** | Provider calls run off the UI thread with a visible waiting animation |
-| **Explicit memory** | Optional visible Memory section is disabled by default and stored as non-secret settings |
-| **Custom context templates** | Up to three user-defined right-click templates with optional replacement mode |
-| **No hidden memory** | Single-turn conversations with no cross-request context |
-| **Dynamic models** | Model list loads after provider login or API key setup |
-| **Safer secret storage** | Provider secrets now live in local DPAPI storage with legacy migration |
-| **Context menu** | Practical right-click actions for editing workflows |
-| **Bilingual UI** | English and Traditional Chinese support |
-
-## Security and Settings Storage
-
-- API keys and OAuth tokens are stored in `%LocalAppData%\Notepad++\AIAssistant`.
-- Secret values are protected with Windows DPAPI.
-- Non-secret preferences are stored separately in `%AppData%\Notepad++\plugins\config\NppAIAssistant.ini`.
-- Prompt templates and prompt-section preferences are non-secret settings.
-- Legacy roaming secure blobs are migrated automatically on first launch of the updated build.
-- Gemini requests now authenticate with the `x-goog-api-key` header instead of query-string API keys.
-
-## Current Capability Boundaries
-
-| Area | Status |
-|------|--------|
-| Prompt sections and estimated token preview | Implemented |
-| OAuth storage model beyond existing paused Copilot code | Planned, not validated |
-| Explicit visible memory storage and injection | Implemented, disabled by default |
-| Waiting animation during provider output | Implemented |
-| Three custom right-click templates | Implemented |
-
-## Screenshots
-
-### Settings dialog
-
-<table>
-<tr>
-<td align="center"><strong>Prompt preview</strong><br><sub>See the exact prompt being built as you adjust presets and output rules</sub></td>
-<td align="center"><strong>Preset-driven prompt builder</strong><br><sub>Switch presets to quickly configure scenario modules and parameters</sub></td>
-</tr>
-<tr>
-<td><img src="docs/assets/screenshots/settings-prompt-preview.png" alt="Prompt Preview" width="380"></td>
-<td><img src="docs/assets/screenshots/settings-preset-dropdown.png" alt="Preset Dropdown" width="380"></td>
-</tr>
-</table>
-
-### Context menu actions
-
-Trigger explanation, refactoring, comments, and fixes directly from the editor.
-
-<p align="center">
-  <img src="docs/assets/screenshots/context-menu-actions.png" alt="Context Menu Actions" width="420">
-</p>
-
-## Build
-
-<details>
-<summary><strong>Visual Studio / MSBuild</strong></summary>
+NppAIAssistant is source-buildable as a standalone C++20 plugin. Build an x64
+DLL with CMake:
 
 ```powershell
-.\scripts\invoke-msbuild.ps1 -Configuration Release -Platform x64
+cmake -S . -B build-cmake
+cmake --build build-cmake --config Release
 ```
 
-</details>
+Copy the resulting `NppAIAssistant.dll` into:
 
-<details>
-<summary><strong>CMake</strong></summary>
-
-```powershell
-cmake -S . -B build
-cmake --build build --config Release
-```
-
-</details>
-
-Expected output: `build/x64/Release/plugins/NppAIAssistant/NppAIAssistant.dll`
-
-## Install
-
-Copy the built DLL to:
-
-```
+```text
 <Notepad++>\plugins\NppAIAssistant\NppAIAssistant.dll
 ```
 
-Or run the install script:
+Restart Notepad++, open **Plugins > NppAIAssistant > Settings**, configure a
+provider, test its connection, and explicitly choose a discovered model before
+sending a request. See the [usage guide](docs/USAGE.md) for the complete setup
+and safety notes.
+
+## What it provides
+
+- A docked AI panel for one-off questions and responses.
+- Visible single-turn prompt profiles: presets, language and encoding guidance,
+  detail level, scenario modules, output rules, and a prompt preview.
+- Editable Identity, Rules, and Assignment sections, plus optional visible
+  Memory. Memory is off by default and is never hidden context.
+- Dynamic model discovery for OpenAI, Gemini, Claude, and an optional local
+  OpenAI-compatible `/v1` server.
+- Model safety: a missing saved model is not silently replaced. Choose a model
+  again before sending.
+- Editor actions for explaining, refactoring, commenting on, or fixing selected
+  text. The AI menu opens only for **Ctrl + right-click** on a non-empty mouse
+  selection; normal and keyboard context menus remain with Notepad++.
+- English and Traditional Chinese UI text.
+
+## Privacy and connection boundaries
+
+API keys are protected with Windows DPAPI in local application storage.
+Non-secret preferences, such as prompt templates, selected models, timeout, and
+the optional local endpoint, are stored in the Notepad++ plugin configuration
+file under `%AppData%`.
+
+The optional local OpenAI-compatible provider accepts only literal loopback
+`/v1` endpoints: `http://127.0.0.1:<port>/v1` or
+`http://[::1]:<port>/v1`. `localhost` is normalized to `127.0.0.1`. Requests to
+this provider bypass proxies, refuse redirects, and do not accept remote hosts.
+
+The request timeout defaults to 30 seconds and can be set from 1 to 300 seconds
+in Settings. Each request captures its own timeout, endpoint, model, and
+credential state before it begins.
+
+Do not place passwords, customer data, API keys, or other secrets in prompt
+templates or the optional Memory field; those are ordinary plugin preferences.
+
+## Documentation
+
+- [Usage guide](docs/USAGE.md) — installation, first-time setup, prompt tools,
+  context-menu behaviour, and troubleshooting.
+- [Local provider and timeout](docs/LOCAL_PROVIDER_AND_TIMEOUT.md) — loopback
+  endpoint policy, model-selection policy, and manual acceptance checks.
+- [Project change log](docs/CHANGELOG.md) / [專案更新紀錄](docs/CHANGELOG.zh-tw.md)
+  — user-facing summary of the current unreleased changes.
+- [Plugins Admin submission guide](docs/PLUGIN_ADMIN_SUBMISSION.md) — packaging
+  and official-list prerequisites. It does not mean the plugin is listed.
+- [Project structure](PROJECT_STRUCTURE.md) — source and packaging layout.
+
+## Verification and release status
+
+The repository includes a focused security regression script and package
+readiness tooling:
 
 ```powershell
-scripts/install-npp-ai-plugin.ps1
+.\scripts\verify-security-regressions.ps1
+.\scripts\package-npp-ai-plugin.ps1 -Platform x64
+.\scripts\smoke-package-install.ps1
+.\scripts\verify-release-readiness.ps1 -Platform x64 -Configuration Release
 ```
 
-## Repository Layout
+The code build and static checks do not replace manual Notepad++ acceptance.
+Before a public release, verify the packaged ZIP in Notepad++, including the
+settings dialog, context-menu gesture, local-endpoint rejection, model selection,
+and unload behaviour.
 
-```
-NppAIAssistant/
-├── src/                  # Plugin source, resources, version info
-│   └── shared/           # HTTP, provider API, secure and plain settings storage
-├── vendor/
-│   ├── notepadpp/        # Vendored plugin & docking headers
-│   └── scintilla/include # Scintilla headers for the plugin interface
-├── docs/                 # Usage guides, release notes, submission docs
-└── scripts/              # Install and package helpers
-```
+NppAIAssistant is not represented here as available through Plugins Admin. An
+official `nppPluginList` submission requires a final GitHub Release ZIP at a
+direct HTTPS URL, its final SHA-256, an architecture-specific entry, and the
+upstream maintainers' review.
 
-See also:
+## Contributing and license
 
-- [Project Structure](PROJECT_STRUCTURE.md)
-- [Usage Guide](docs/USAGE.md)
-- [Development Log](docs/DEVELOPMENT_LOG.md)
-- [Security Remediation Backlog](docs/SECURITY_REMEDIATION.md)
-- [Security Verification Checklist](docs/SECURITY_VERIFICATION.md)
-- [Plugins Admin Submission Guide](docs/PLUGIN_ADMIN_SUBMISSION.md)
+Issues and pull requests are welcome at
+[pingqLIN/NppAIAssistant](https://github.com/pingqLIN/NppAIAssistant). Please do
+not include secrets, local API keys, or generated build output in a contribution.
 
-## Release and Plugins Admin
-
-| Item | Path |
-|------|------|
-| Packaging script | `scripts/package-npp-ai-plugin.ps1` |
-| Metadata | `plugin-admin-metadata.json` |
-| Submission guide | [docs/PLUGIN_ADMIN_SUBMISSION.md](docs/PLUGIN_ADMIN_SUBMISSION.md) |
-
-Recommended release config:
-
-- GitHub release tag: `v0.1.0`
-- Plugin version: `0.1.0.0`
-- Release asset: `NppAIAssistant-0.1.0.0-x64.zip`
-
-## AI-Assisted Development
-
-This project was developed with AI assistance.
-
-| Role | Model / Service | Contribution |
-|------|-----------------|--------------|
-| Coordinator | OpenAI Codex | Planning, implementation, review integration, documentation |
-| Reviewers | OpenAI Codex subagents | Security, Notepad++ plugin workflow, UI/prompt architecture review |
-
-> Disclaimer: AI-generated changes are reviewed and validated with local builds,
-> scripts, and manual plugin gates where applicable, but no guarantee can be made
-> regarding correctness, security, or fitness for any particular purpose. Use at
-> your own risk.
-
----
-
-<p align="center">
-  <sub>GPL-3.0 · <a href="https://github.com/pingqLIN/NppAIAssistant">GitHub</a></sub>
-</p>
+This repository is distributed under the [GNU GPL version 3](LICENSE).

@@ -7,15 +7,19 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
 $mainPath = Join-Path $repoRoot 'src\NppAIAssistant.cpp'
 $httpClientPath = Join-Path $repoRoot 'src\shared\HttpClient.cpp'
+$llmApiClientPath = Join-Path $repoRoot 'src\shared\LLMApiClient.cpp'
 $securityChecklistPath = Join-Path $repoRoot 'docs\SECURITY_VERIFICATION.md'
 $packageScriptPath = Join-Path $repoRoot 'scripts\package-npp-ai-plugin.ps1'
 $packageSmokeScriptPath = Join-Path $repoRoot 'scripts\smoke-package-install.ps1'
+$releaseReadinessScriptPath = Join-Path $repoRoot 'scripts\verify-release-readiness.ps1'
 
 $mainSource = Get-Content $mainPath -Raw
 $httpClientSource = Get-Content $httpClientPath -Raw
+$llmApiClientSource = Get-Content $llmApiClientPath -Raw
 $securityChecklist = Get-Content $securityChecklistPath -Raw
 $packageScript = Get-Content $packageScriptPath -Raw
 $packageSmokeScript = Get-Content $packageSmokeScriptPath -Raw
+$releaseReadinessScript = Get-Content $releaseReadinessScriptPath -Raw
 
 $checks = @(
   @{
@@ -23,6 +27,34 @@ $checks = @(
     Passed = $mainSource -match 'SecureStorage::loadApiKey\(kOpenAIKeyName\)' -and
              $mainSource -match 'SecureStorage::loadApiKey\(kGeminiKeyName\)' -and
              $mainSource -match 'SecureStorage::loadApiKey\(kClaudeKeyName\)'
+  }
+  @{
+    Name = 'Request timeout is bounded and passed per request'
+    Passed = $mainSource -match 'kDefaultRequestTimeoutSeconds = 30' -and
+             $mainSource -match 'clampRequestTimeoutSeconds' -and
+             $mainSource -match 'requestTimeoutMilliseconds' -and
+             $httpClientSource -match 'const HttpRequestOptions &options'
+  }
+  @{
+    Name = 'Local compatible endpoint is loopback-only and stored without its key'
+    Passed = $llmApiClientSource -match 'normalizeLoopbackCompatibleBaseUrl' -and
+             $llmApiClientSource -match 'host != L"localhost" && host != L"127\.0\.0\.1"' -and
+             $httpClientSource -match 'WINHTTP_ACCESS_TYPE_NO_PROXY' -and
+             $httpClientSource -match 'WINHTTP_OPTION_REDIRECT_POLICY_NEVER' -and
+             $mainSource -match 'SecureStorage::saveApiKey\(kLocalCompatibleKeyName' -and
+             $mainSource -match 'SettingsStorage::saveString\(kLocalCompatibleBaseUrlName'
+  }
+  @{
+    Name = 'Model discovery requires an explicit selected model'
+    Passed = $mainSource -match 'int selectedIndex = -1;' -and
+             $mainSource -match 'CB_SETCURSEL, static_cast<WPARAM>\(selectedIndex\)' -and
+             $mainSource -notmatch 'response\.models\[static_cast<size_t>\(selectedIndex\)\]'
+  }
+  @{
+    Name = 'AI context menu requires Ctrl plus a mouse selection'
+    Passed = $mainSource -match 'isMouseInvocation = lParam != static_cast<LPARAM>\(-1\)' -and
+             $mainSource -match 'GetKeyState\(VK_CONTROL\)' -and
+             $mainSource -match 'showAiContextMenu\(hwnd, lParam\)'
   }
   @{
     Name = 'Provider keys are not loaded during global config bootstrap'
@@ -116,6 +148,12 @@ $checks = @(
              $packageSmokeScript -match 'PdbPresent' -and
              $packageSmokeScript -match 'Package SHA-256 mismatch' -and
              $securityChecklist -match 'smoke-package-install\.ps1'
+  }
+  @{
+    Name = 'Release readiness validates manifest package and exported plugin ABI'
+    Passed = $releaseReadinessScript -match 'Package hash matches manifest' -and
+             $releaseReadinessScript -match 'Plugin list repository is a direct HTTPS zip' -and
+             $releaseReadinessScript -match 'Source exports'
   }
 )
 

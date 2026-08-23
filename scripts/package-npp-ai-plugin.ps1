@@ -38,12 +38,19 @@ function Test-PluginsAdminReleaseUrl {
 
 $pluginRoot = $repoRoot
 $buildDir = Join-Path $repoRoot "build\$Platform\$Configuration\plugins\NppAIAssistant"
-$dllPath = Join-Path $buildDir "NppAIAssistant.dll"
-$pdbPath = Join-Path $buildDir "NppAIAssistant.pdb"
+$dllCandidates = @(
+    (Join-Path $buildDir "NppAIAssistant.dll"),
+    (Join-Path (Join-Path $buildDir $Configuration) "NppAIAssistant.dll")
+)
+$dllPath = $dllCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+$pdbPath = ""
+if (-not [string]::IsNullOrWhiteSpace($dllPath)) {
+    $pdbPath = Join-Path (Split-Path $dllPath -Parent) "NppAIAssistant.pdb"
+}
 $metadataPath = Join-Path $pluginRoot "plugin-admin-metadata.json"
 
-if (-not (Test-Path $dllPath)) {
-    throw "Plugin DLL not found: $dllPath"
+if ([string]::IsNullOrWhiteSpace($dllPath)) {
+    throw "Plugin DLL not found. Checked:`n$($dllCandidates -join [Environment]::NewLine)"
 }
 if (-not (Test-Path $metadataPath)) {
     throw "Plugin metadata file not found: $metadataPath"
@@ -90,6 +97,12 @@ if (Test-Path (Join-Path $repoRoot "README_zh-TW.md")) {
 }
 Copy-Item (Join-Path $repoRoot "LICENSE") (Join-Path $docRoot "LICENSE") -Force
 Copy-Item (Join-Path $repoRoot "docs\USAGE.md") (Join-Path $docRoot "USAGE.md") -Force
+foreach ($docName in @("LOCAL_PROVIDER_AND_TIMEOUT.md", "LOCAL_PROVIDER_AND_TIMEOUT.zh-tw.md", "CHANGELOG.md", "CHANGELOG.zh-tw.md")) {
+    $sourcePath = Join-Path $repoRoot "docs\$docName"
+    if (Test-Path $sourcePath) {
+        Copy-Item $sourcePath (Join-Path $docRoot $docName) -Force
+    }
+}
 if (Test-Path (Join-Path $repoRoot "docs\DEVELOPMENT_LOG.md")) {
     Copy-Item (Join-Path $repoRoot "docs\DEVELOPMENT_LOG.md") (Join-Path $docRoot "DEVELOPMENT_LOG.md") -Force
 }

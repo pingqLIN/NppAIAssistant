@@ -38,5 +38,10 @@ Use this checklist when validating secret handling changes or preparing a releas
 4. Confirm packaged docs include the updated README and security docs.
 5. Run `scripts/smoke-package-install.ps1`.
 6. Confirm `RootDllPresent`, `RequiredDocsPresent`, and `PdbPresent: False`.
-7. Treat `PluginsAdminReady: False` as expected for local package smoke until a
+7. Run `scripts/verify-release-readiness.ps1 -Platform x64 -Configuration Release`.
+8. Confirm that the release readiness gate validates the manifest, package hash,
+   DLL version, ZIP layout, plugin-list fields, and Notepad++ export names.
+9. Treat `PluginsAdminReady: False` as expected for local package smoke until a
    final HTTPS `.zip` release URL is supplied.
+10. After regenerating with a final direct HTTPS `.zip` URL, run
+    `scripts/verify-release-readiness.ps1 -Platform x64 -Configuration Release -RequirePluginsAdminReady`.

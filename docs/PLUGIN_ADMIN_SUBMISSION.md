@@ -45,6 +45,8 @@ This keeps the public Git tag clean while preserving the exact four-part DLL ver
 - Packaging script now emits a schema-shaped JSON entry with all required metadata fields
 - The package places `NppAIAssistant.dll` at the zip root
 - The packaging script rejects staged `.pdb` symbol files before zip creation
+- The release readiness script validates the manifest, ZIP hash, DLL version,
+  ZIP layout, plugin-list fields, and required Notepad++ exports
 - Documentation is placed under `doc/NppAIAssistant/`
 - The package smoke script can stage the zip into a temporary Notepad++ plugin
   layout without touching the installed Notepad++ directory
@@ -85,6 +87,16 @@ Smoke test the generated zip layout:
 .\scripts\smoke-package-install.ps1
 ```
 
+Run the release readiness gate:
+
+```powershell
+.\scripts\verify-release-readiness.ps1 -Platform x64 -Configuration Release
+```
+
+This passes for a local package while `PluginsAdminReady` is false. Use
+`-RequirePluginsAdminReady` only after publishing a final direct HTTPS ZIP
+asset and regenerating the package with that exact URL.
+
 ## Recommended Submission Workflow
 
 1. Build the release DLL
@@ -96,9 +108,15 @@ Smoke test the generated zip layout:
 .\scripts\package-npp-ai-plugin.ps1 -Platform x64 -ReleaseUrl "https://github.com/pingqLIN/NppAIAssistant/releases/download/v0.1.0/NppAIAssistant-0.1.0.0-x64.zip"
 ```
 
-5. Copy the generated entry JSON into the correct `nppPluginList` architecture file
-6. Test locally if needed with the official Plugins Admin local-test flow
-7. Submit the PR
+5. Verify the final package:
+
+```powershell
+.\scripts\verify-release-readiness.ps1 -Platform x64 -Configuration Release -RequirePluginsAdminReady
+```
+
+6. Copy the generated entry JSON into the correct `nppPluginList` architecture file
+7. Test locally if needed with the official Plugins Admin local-test flow
+8. Submit the PR
 
 ## Metadata Source
 

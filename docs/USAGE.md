@@ -37,8 +37,33 @@ Default script assumptions:
 2. Enter an API key for OpenAI, Gemini, or Claude.
 3. Choose the default provider.
 4. Click `Test Default Connection`.
-5. Confirm models are loaded dynamically for that provider.
+5. Choose a model from the returned list. The plugin never silently replaces a
+   saved model that is no longer available.
 6. Choose the UI language if needed.
+
+## Request Timeout and Local Compatible Provider
+
+`Request timeout (seconds)` defaults to 30 and accepts whole values from 1 to
+300. The value applies to model discovery, Test Default Connection, and
+inference. Each request uses a snapshot of the saved value, so an in-flight
+request is not changed by a later settings edit.
+
+The optional `Local OpenAI-compatible` provider is intentionally restricted to
+a loopback OpenAI-compatible `/v1` service. Enter either:
+
+```text
+http://127.0.0.1:<port>/v1
+http://[::1]:<port>/v1
+```
+
+`localhost` is accepted and normalized to `127.0.0.1`. Remote hosts, URL
+credentials, query strings, non-`/v1` paths, redirects, and proxies are not
+allowed for this provider. Its API key is optional and stored with the other
+DPAPI-protected API keys; its endpoint and selected model are non-secret
+preferences.
+
+For the full policy and acceptance checklist, see
+[Local Provider and Request Timeout](LOCAL_PROVIDER_AND_TIMEOUT.md).
 
 ## Settings and Secret Storage
 
@@ -162,13 +187,15 @@ That means:
 
 ## Context Menu Actions
 
-After selecting text in Notepad++, you can use the AI context menu actions:
+After selecting text in Notepad++, hold Ctrl and use the mouse right-click to
+open the AI context menu actions:
 - AI: Explain Selection
 - AI: Refactor Selection
 - AI: Add Comments
 - AI: Fix Selection
 
-These actions are optimized for fast in-editor use.
+This deliberate gesture leaves normal right-click and keyboard context menus to
+Notepad++. These actions are optimized for fast in-editor use.
 
 ## AI Panel Workflow
 
@@ -187,7 +214,10 @@ input text. The scale is stored as a non-secret preference and is clamped betwee
 ## Model Loading
 
 Models are loaded dynamically after the relevant provider is configured and available.
-This helps avoid stale hardcoded model lists and makes the plugin better aligned with the actual provider account state.
+This avoids stale hardcoded model lists and keeps the actual account or local
+service in control of what may be selected. A model is restored only when its
+exact ID is still returned. If it is missing, select a listed model explicitly;
+the plugin will not choose the first result or change models during retry.
 
 ## Recommended GitHub Demo Flow
 

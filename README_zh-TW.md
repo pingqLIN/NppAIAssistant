@@ -1,186 +1,90 @@
-<p align="center">
-  <strong>NppAIAssistant</strong><br>
-  為 Notepad++ 設計的輕量 AI 外掛
-</p>
+# NppAIAssistant
 
-<p align="center">
-  <a href="https://github.com/pingqLIN/NppAIAssistant/releases/tag/v0.1.0"><img src="https://img.shields.io/github/v/release/pingqLIN/NppAIAssistant?label=release" alt="Release"></a>
-  <a href="https://github.com/pingqLIN/NppAIAssistant/releases"><img src="https://img.shields.io/github/downloads/pingqLIN/NppAIAssistant/total" alt="Downloads"></a>
-  <a href="https://notepad-plus-plus.org/"><img src="https://img.shields.io/badge/platform-Windows-0078D6" alt="Platform"></a>
-  <a href="https://notepad-plus-plus.org/"><img src="https://img.shields.io/badge/Notepad++-Plugin-90E59A" alt="Notepad++"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="License"></a>
-  <a href="https://github.com/notepad-plus-plus/nppPluginList/pull/1051"><img src="https://img.shields.io/badge/Plugins%20Admin-PR%20submitted-success" alt="Plugins Admin PR"></a>
-</p>
+NppAIAssistant 是在 Windows 上運行的 Notepad++ AI 外掛，讓使用者在編輯程式或文字時，
+以清楚可見、單次獨立的方式取得 AI 協助。提示詞的組成可以在設定中檢視；每次請求不會暗中
+沿用先前對話內容。
 
-<p align="center">
-  <a href="README.md">English</a>
-</p>
+[English](README.md)
 
----
+## 從這裡開始
 
-強調提示詞可視性、模組化單輪提示設定，以及不保留隱藏記憶的可預測行為。
-
-這個 repository 專注在外掛本身，不攜帶完整 Notepad++ 上游歷史，因此更適合公開發布、程式審查、打包與版本管理。
-
-## 目錄
-
-- [專案亮點](#專案亮點)
-- [安全與設定儲存](#安全與設定儲存)
-- [截圖](#截圖)
-- [建置](#建置)
-- [安裝](#安裝)
-- [專案結構](#專案結構)
-- [發佈與 Plugins Admin](#發佈與-plugins-admin)
-
-## 專案亮點
-
-| 特色 | 說明 |
-|------|------|
-| **輕量架構** | 以標準 Notepad++ 外掛發佈，不需要 fork 核心 |
-| **提示詞可視化** | 設定中即時預覽實際送出的提示結構 |
-| **提示詞區塊** | 以可視方式組裝 Mandatory transparency、Identity、Rules、System、Assignment 與 User Request |
-| **模板控制** | Identity、Rules、Assignment 模板可編輯、插入 token 並重置 |
-| **估算 token 摘要** | 設定預覽顯示各區塊與總量的 estimated tokens |
-| **顯示比例** | AI 面板文字比例可透過 `A+` / `A-` 調整並保存 |
-| **等待狀態** | Provider 呼叫移出 UI thread，等待時顯示動畫 |
-| **明確記憶** | 可選的可視 Memory 區塊預設關閉，並以非機敏設定儲存 |
-| **自訂右鍵模板** | 最多三組使用者自訂右鍵 template，可選擇是否取代選取文字 |
-| **不保留記憶** | 單輪對話設計，不依賴跨請求隱藏上下文 |
-| **動態模型載入** | 登入或設定 API Key 後自動取得可用模型 |
-| **更安全的秘密儲存** | 機敏憑證改為本機 DPAPI 保護並支援舊版遷移 |
-| **右鍵選單整合** | 常用編輯操作直接融入右鍵功能選單 |
-| **雙語介面** | 支援英文與繁體中文 |
-
-## 安全與設定儲存
-
-- API Key 與 OAuth token 儲存在 `%LocalAppData%\Notepad++\AIAssistant`。
-- 機敏值使用 Windows DPAPI 保護。
-- 一般偏好設定改存於 `%AppData%\Notepad++\plugins\config\NppAIAssistant.ini`。
-- 提示詞模板與提示詞區塊偏好屬於非機敏設定。
-- 更新後首次啟動會自動遷移舊版 roaming secure blobs。
-- Gemini 連線改用 `x-goog-api-key` header，不再把 API key 放進 query string。
-
-## 目前功能邊界
-
-| 項目 | 狀態 |
-|------|------|
-| 提示詞區塊與 estimated token 預覽 | 已實作 |
-| 既有暫停 Copilot 程式碼以外的 OAuth 儲存模型 | 規劃中，尚未驗證 |
-| 明確可視 Memory 儲存與注入 | 已實作，預設關閉 |
-| 輸出等待動畫 | 已實作 |
-| 三組自訂右鍵 template | 已實作 |
-
-## 截圖
-
-### 設定對話框
-
-<table>
-<tr>
-<td align="center"><strong>提示詞預覽</strong><br><sub>調整 preset 和輸出規則時，即時顯示正在組裝的提示詞</sub></td>
-<td align="center"><strong>Preset 驅動的提示組裝</strong><br><sub>切換 preset 快速配置情境模組與回覆參數</sub></td>
-</tr>
-<tr>
-<td><img src="docs/assets/screenshots/settings-prompt-preview.png" alt="提示詞預覽" width="380"></td>
-<td><img src="docs/assets/screenshots/settings-preset-dropdown.png" alt="Preset 下拉選單" width="380"></td>
-</tr>
-</table>
-
-### 右鍵功能選單
-
-直接在編輯器觸發解說、重構、加註解、修正等操作。
-
-<p align="center">
-  <img src="docs/assets/screenshots/context-menu-actions.png" alt="右鍵功能選單" width="420">
-</p>
-
-## 建置
-
-<details>
-<summary><strong>Visual Studio / MSBuild</strong></summary>
+本專案是可獨立建置的 C++20 Notepad++ 外掛。可先用 CMake 產生 x64 DLL：
 
 ```powershell
-.\scripts\invoke-msbuild.ps1 -Configuration Release -Platform x64
+cmake -S . -B build-cmake
+cmake --build build-cmake --config Release
 ```
 
-</details>
+將產生的 `NppAIAssistant.dll` 複製到：
 
-<details>
-<summary><strong>CMake</strong></summary>
-
-```powershell
-cmake -S . -B build
-cmake --build build --config Release
-```
-
-</details>
-
-預期輸出：`build/x64/Release/plugins/NppAIAssistant/NppAIAssistant.dll`
-
-## 安裝
-
-將編譯出的 DLL 複製到：
-
-```
+```text
 <Notepad++>\plugins\NppAIAssistant\NppAIAssistant.dll
 ```
 
-或執行安裝腳本：
+重新啟動 Notepad++ 後，開啟 **Plugins > NppAIAssistant > Settings**，設定供應商、
+測試連線，再從取得的模型清單中明確選擇一個模型，便可以送出請求。完整流程請參閱
+[使用說明](docs/USAGE.md)。
+
+## 可以做什麼
+
+- 以停駐式 AI 面板提出一次性的問題並查看回覆。
+- 透過預設方案、回覆語言與編碼建議、詳細程度、情境模組、輸出規則，以及提示詞預覽，
+  調整單次請求。
+- 編輯 Identity、Rules、Assignment 區塊；也可以啟用可見的 Memory。Memory 預設關閉，
+  不會成為隱藏上下文。
+- 向 OpenAI、Gemini、Claude 或選用的本機 OpenAI 相容 `/v1` 服務取得模型清單。
+- 已保存的模型若不再存在，外掛不會自行改選其他模型；必須由使用者重新選取後才能送出。
+- 在選取文字後執行解說、重構、加註解或修正。AI 右鍵選單只會在「選取非空文字後按住 Ctrl
+  再用滑鼠按右鍵」時出現；一般右鍵與鍵盤內容選單仍由 Notepad++ 原生處理。
+- 介面提供英文與繁體中文。
+
+## 隱私與連線界線
+
+API Key 會以 Windows DPAPI 保護並存放在本機應用程式資料夾。提示詞模板、已選模型、逾時秒數
+與選用的本機端點屬於非機敏偏好，會存放在 `%AppData%` 下的 Notepad++ 外掛設定檔。
+
+本機 OpenAI 相容供應商僅接受字面上的 loopback `/v1` 端點：
+`http://127.0.0.1:<port>/v1` 或 `http://[::1]:<port>/v1`。輸入 `localhost` 時會轉為
+`127.0.0.1`；遠端主機不會通過驗證。本機請求會略過 Proxy、拒絕重新導向，也不接受遠端位址。
+
+請求逾時預設為 30 秒，可在設定中調整為 1 到 300 秒。每個請求開始前都會保留自己的逾時、
+端點、模型與憑證快照，因此設定變更不會影響已經執行中的請求。
+
+請勿將密碼、客戶資料、API Key 或其他機敏資訊寫入提示詞模板或選用的 Memory 欄位；這些內容
+屬於一般外掛偏好設定，並非秘密儲存空間。
+
+## 文件
+
+- [使用說明](docs/USAGE.md) — 安裝、首次設定、提示詞工具、右鍵行為與排除方式。
+- [本機供應商與請求逾時](docs/LOCAL_PROVIDER_AND_TIMEOUT.zh-tw.md) — loopback 端點政策、
+  模型選取原則與手動驗收項目。
+- [專案更新紀錄](docs/CHANGELOG.zh-tw.md) / [Project change log](docs/CHANGELOG.md)
+  — 目前尚未發行變更的使用者導向摘要。
+- [Plugins Admin 提交指南](docs/PLUGIN_ADMIN_SUBMISSION.md) — 打包與官方清單的前置條件；
+  這不代表外掛已上架。
+- [專案結構](PROJECT_STRUCTURE.md) — 原始碼與打包檔案的位置。
+
+## 驗證與發佈狀態
+
+專案提供安全性回歸檢查與打包就緒工具：
 
 ```powershell
-scripts/install-npp-ai-plugin.ps1
+.\scripts\verify-security-regressions.ps1
+.\scripts\package-npp-ai-plugin.ps1 -Platform x64
+.\scripts\smoke-package-install.ps1
+.\scripts\verify-release-readiness.ps1 -Platform x64 -Configuration Release
 ```
 
-## 專案結構
+程式建置與靜態檢查不能取代 Notepad++ 的實機驗收。公開發佈前，仍應從 ZIP 套件安裝測試，
+確認設定視窗、右鍵手勢、本機端點拒絕、模型選取與卸載行為。
 
-```
-NppAIAssistant/
-├── src/                  # 外掛主程式、資源檔、版本資訊
-│   └── shared/           # HTTP、Provider API、安全與一般設定儲存
-├── vendor/
-│   ├── notepadpp/        # Notepad++ plugin & docking headers
-│   └── scintilla/include # 外掛介面所需的 Scintilla headers
-├── docs/                 # 使用說明、發佈說明、提交文件
-└── scripts/              # 安裝與打包輔助腳本
-```
+本 README 不宣稱 NppAIAssistant 已可從 Plugins Admin 安裝。正式送交 `nppPluginList` 前，
+必須先有 GitHub Release 的直接 HTTPS ZIP 連結、該檔案的最終 SHA-256、對應架構的 JSON 項目，
+以及上游維護者的審查。
 
-延伸閱讀：
+## 參與與授權
 
-- [專案結構](PROJECT_STRUCTURE.md)
-- [使用說明](docs/USAGE.md)
-- [開發紀錄](docs/DEVELOPMENT_LOG.md)
-- [安全性修補建議](docs/SECURITY_REMEDIATION.md)
-- [安全性驗證清單](docs/SECURITY_VERIFICATION.md)
-- [Plugins Admin 提交指南](docs/PLUGIN_ADMIN_SUBMISSION.md)
+歡迎透過 [pingqLIN/NppAIAssistant](https://github.com/pingqLIN/NppAIAssistant)
+提交 issue 或 pull request。請勿將 API Key、機敏資料、個人設定或建置產物提交到專案中。
 
-## 發佈與 Plugins Admin
-
-| 項目 | 路徑 |
-|------|------|
-| 打包腳本 | `scripts/package-npp-ai-plugin.ps1` |
-| Metadata | `plugin-admin-metadata.json` |
-| 提交說明 | [docs/PLUGIN_ADMIN_SUBMISSION.md](docs/PLUGIN_ADMIN_SUBMISSION.md) |
-
-建議版本配置：
-
-- GitHub release tag：`v0.1.0`
-- 外掛版本：`0.1.0.0`
-- Release 資產：`NppAIAssistant-0.1.0.0-x64.zip`
-
-## AI 輔助開發聲明
-
-本專案使用 AI 輔助開發。
-
-| 角色 | Model / 服務 | 貢獻 |
-|------|--------------|------|
-| 協調者 | OpenAI Codex | 規劃、實作、審查整合、文件更新 |
-| 審查者 | OpenAI Codex 子代理 | 安全性、Notepad++ 外掛流程、UI/prompt 架構審查 |
-
-> 免責聲明：AI 產生的變更會透過本機建置、腳本與必要的手動外掛 gate
-> 進行審查與驗證，但仍不保證其正確性、安全性或適用於任何特定目的。
-> 使用風險自負。
-
----
-
-<p align="center">
-  <sub>GPL-3.0 · <a href="https://github.com/pingqLIN/NppAIAssistant">GitHub</a></sub>
-</p>
+本專案採用 [GNU GPL version 3](LICENSE) 授權。

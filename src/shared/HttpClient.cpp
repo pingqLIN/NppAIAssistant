@@ -19,9 +19,6 @@
 #include <stdexcept>
 #include <vector>
 
-// Static member initialization
-DWORD HttpClient::_timeoutMs = HttpClient::DEFAULT_TIMEOUT_MS;
-
 std::wstring HttpClient::utf8ToWide(const std::string &utf8) {
   if (utf8.empty())
     return L"";
@@ -100,7 +97,8 @@ bool HttpClient::parseUrl(const std::wstring &url, std::wstring &host,
 
 HttpResponse
 HttpClient::post(const std::wstring &url, const std::wstring &body,
-                 const std::map<std::wstring, std::wstring> &headers) {
+                 const std::map<std::wstring, std::wstring> &headers,
+                 const HttpRequestOptions &options) {
   HttpResponse response;
 
   // Parse URL
@@ -115,7 +113,9 @@ HttpClient::post(const std::wstring &url, const std::wstring &body,
 
   // Initialize WinHTTP session
   HINTERNET hSession = WinHttpOpen(
-      L"Notepad++ AI Assistant/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+      L"Notepad++ AI Assistant/1.0",
+      options.bypassProxy ? WINHTTP_ACCESS_TYPE_NO_PROXY
+                          : WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
       WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
 
   if (!hSession) {
@@ -124,7 +124,8 @@ HttpClient::post(const std::wstring &url, const std::wstring &body,
   }
 
   // Set timeouts
-  WinHttpSetTimeouts(hSession, _timeoutMs, _timeoutMs, _timeoutMs, _timeoutMs);
+  WinHttpSetTimeouts(hSession, options.timeoutMs, options.timeoutMs,
+                     options.timeoutMs, options.timeoutMs);
 
   // Connect to server
   HINTERNET hConnect = WinHttpConnect(hSession, host.c_str(), port, 0);
@@ -145,6 +146,18 @@ HttpClient::post(const std::wstring &url, const std::wstring &body,
     WinHttpCloseHandle(hConnect);
     WinHttpCloseHandle(hSession);
     return response;
+  }
+
+  if (options.disableRedirects) {
+    DWORD redirectPolicy = WINHTTP_OPTION_REDIRECT_POLICY_NEVER;
+    if (!WinHttpSetOption(hRequest, WINHTTP_OPTION_REDIRECT_POLICY,
+                          &redirectPolicy, sizeof(redirectPolicy))) {
+      response.errorMessage = L"Failed to disable redirects";
+      WinHttpCloseHandle(hRequest);
+      WinHttpCloseHandle(hConnect);
+      WinHttpCloseHandle(hSession);
+      return response;
+    }
   }
 
   // Add headers
@@ -205,6 +218,10 @@ HttpClient::post(const std::wstring &url, const std::wstring &body,
     if (bytesAvailable == 0)
       break;
 
+    if (responseBody.size() + bytesAvailable > options.maxResponseBytes) {
+      response.errorMessage = L"HTTP response exceeded the configured size limit";
+      break;
+    }
     std::vector<char> buffer(bytesAvailable + 1, 0);
     DWORD bytesRead = 0;
 
@@ -215,7 +232,7 @@ HttpClient::post(const std::wstring &url, const std::wstring &body,
 
   // Convert response to wide string
   response.body = utf8ToWide(responseBody);
-  response.success = (statusCode >= 200 && statusCode < 300);
+  response.success = response.errorMessage.empty() && statusCode >= 200 && statusCode < 300;
 
   // Cleanup
   WinHttpCloseHandle(hRequest);
@@ -225,13 +242,15 @@ HttpClient::post(const std::wstring &url, const std::wstring &body,
   return response;
 }
 
-HttpResponse HttpClient::get(const std::wstring &url) {
+HttpResponse HttpClient::get(const std::wstring &url,
+                             const HttpRequestOptions &options) {
   std::map<std::wstring, std::wstring> emptyHeaders;
-  return get(url, emptyHeaders);
+  return get(url, emptyHeaders, options);
 }
 
 HttpResponse HttpClient::get(const std::wstring &url,
-                             const std::map<std::wstring, std::wstring> &headers) {
+                             const std::map<std::wstring, std::wstring> &headers,
+                             const HttpRequestOptions &options) {
   HttpResponse response;
 
   std::wstring host, path;
@@ -244,7 +263,9 @@ HttpResponse HttpClient::get(const std::wstring &url,
   }
 
   HINTERNET hSession = WinHttpOpen(
-      L"Notepad++ AI Assistant/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+      L"Notepad++ AI Assistant/1.0",
+      options.bypassProxy ? WINHTTP_ACCESS_TYPE_NO_PROXY
+                          : WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
       WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
 
   if (!hSession) {
@@ -252,7 +273,8 @@ HttpResponse HttpClient::get(const std::wstring &url,
     return response;
   }
 
-  WinHttpSetTimeouts(hSession, _timeoutMs, _timeoutMs, _timeoutMs, _timeoutMs);
+  WinHttpSetTimeouts(hSession, options.timeoutMs, options.timeoutMs,
+                     options.timeoutMs, options.timeoutMs);
 
   HINTERNET hConnect = WinHttpConnect(hSession, host.c_str(), port, 0);
   if (!hConnect) {
@@ -271,6 +293,18 @@ HttpResponse HttpClient::get(const std::wstring &url,
     WinHttpCloseHandle(hConnect);
     WinHttpCloseHandle(hSession);
     return response;
+  }
+
+  if (options.disableRedirects) {
+    DWORD redirectPolicy = WINHTTP_OPTION_REDIRECT_POLICY_NEVER;
+    if (!WinHttpSetOption(hRequest, WINHTTP_OPTION_REDIRECT_POLICY,
+                          &redirectPolicy, sizeof(redirectPolicy))) {
+      response.errorMessage = L"Failed to disable redirects";
+      WinHttpCloseHandle(hRequest);
+      WinHttpCloseHandle(hConnect);
+      WinHttpCloseHandle(hSession);
+      return response;
+    }
   }
 
   for (const auto &header : headers) {
@@ -315,6 +349,10 @@ HttpResponse HttpClient::get(const std::wstring &url,
     if (bytesAvailable == 0)
       break;
 
+    if (responseBody.size() + bytesAvailable > options.maxResponseBytes) {
+      response.errorMessage = L"HTTP response exceeded the configured size limit";
+      break;
+    }
     std::vector<char> buffer(bytesAvailable + 1, 0);
     DWORD bytesRead = 0;
 
@@ -324,7 +362,7 @@ HttpResponse HttpClient::get(const std::wstring &url,
   } while (bytesAvailable > 0);
 
   response.body = utf8ToWide(responseBody);
-  response.success = (statusCode >= 200 && statusCode < 300);
+  response.success = response.errorMessage.empty() && statusCode >= 200 && statusCode < 300;
 
   WinHttpCloseHandle(hRequest);
   WinHttpCloseHandle(hConnect);

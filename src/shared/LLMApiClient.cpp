@@ -121,6 +121,38 @@ bool isLikelyOpenAIChatModel(const std::wstring &model) {
          startsWith(model, L"o4");
 }
 
+HttpRequestOptions makeRequestOptions(DWORD timeoutMs, bool loopbackOnly) {
+  HttpRequestOptions options;
+  options.timeoutMs = timeoutMs == 0 ? 30000 : timeoutMs;
+  options.bypassProxy = loopbackOnly;
+  options.disableRedirects = loopbackOnly;
+  if (loopbackOnly) {
+    options.maxResponseBytes = 1024 * 1024;
+  }
+  return options;
+}
+
+bool parseStrictPort(const std::wstring &value, INTERNET_PORT &port) {
+  if (value.empty() || value.size() > 5) {
+    return false;
+  }
+  unsigned long parsed = 0;
+  for (wchar_t character : value) {
+    if (character < L'0' || character > L'9') {
+      return false;
+    }
+    parsed = parsed * 10 + static_cast<unsigned long>(character - L'0');
+    if (parsed > 65535) {
+      return false;
+    }
+  }
+  if (parsed == 0) {
+    return false;
+  }
+  port = static_cast<INTERNET_PORT>(parsed);
+  return true;
+}
+
 }
 
 
@@ -339,7 +371,59 @@ std::wstring LLMApiClient::extractJsonPath(const std::wstring &json,
   return current;
 }
 
-ModelListResponse LLMApiClient::listOpenAIModels(const std::wstring &apiKey) {
+bool LLMApiClient::normalizeLoopbackCompatibleBaseUrl(
+    const std::wstring &input, std::wstring &canonicalBaseUrl) {
+  canonicalBaseUrl.clear();
+  if (input.empty() || input.find_first_of(L" \t\r\n\\?#@") != std::wstring::npos) {
+    return false;
+  }
+
+  const std::wstring prefix = L"http://";
+  if (input.compare(0, prefix.size(), prefix) != 0) {
+    return false;
+  }
+  const size_t pathStart = input.find(L'/', prefix.size());
+  if (pathStart == std::wstring::npos || input.substr(pathStart) != L"/v1") {
+    return false;
+  }
+
+  const std::wstring authority = input.substr(prefix.size(), pathStart - prefix.size());
+  std::wstring host;
+  std::wstring portText;
+  if (authority.size() > 3 && authority.front() == L'[') {
+    const size_t closingBracket = authority.find(L']');
+    if (closingBracket == std::wstring::npos ||
+        authority.substr(0, closingBracket + 1) != L"[::1]" ||
+        closingBracket + 2 > authority.size() || authority[closingBracket + 1] != L':') {
+      return false;
+    }
+    host = L"[::1]";
+    portText = authority.substr(closingBracket + 2);
+  } else {
+    const size_t colon = authority.rfind(L':');
+    if (colon == std::wstring::npos || authority.find(L':') != colon) {
+      return false;
+    }
+    host = authority.substr(0, colon);
+    portText = authority.substr(colon + 1);
+    if (host != L"localhost" && host != L"127.0.0.1") {
+      return false;
+    }
+    if (host == L"localhost") {
+      host = L"127.0.0.1";
+    }
+  }
+
+  INTERNET_PORT port = 0;
+  if (!parseStrictPort(portText, port)) {
+    return false;
+  }
+  canonicalBaseUrl = prefix + host + L":" + std::to_wstring(port) + L"/v1";
+  return true;
+}
+
+ModelListResponse LLMApiClient::listOpenAIModels(const std::wstring &apiKey,
+                                                  DWORD timeoutMs) {
   ModelListResponse response;
 
   if (apiKey.empty()) {
@@ -350,7 +434,8 @@ ModelListResponse LLMApiClient::listOpenAIModels(const std::wstring &apiKey) {
   std::map<std::wstring, std::wstring> headers;
   headers[L"Authorization"] = L"Bearer " + apiKey;
 
-  HttpResponse httpResponse = HttpClient::get(L"https://api.openai.com/v1/models", headers);
+  HttpResponse httpResponse = HttpClient::get(
+      L"https://api.openai.com/v1/models", headers, makeRequestOptions(timeoutMs, false));
   if (!httpResponse.success) {
     response.errorMessage = L"HTTP request failed: " + httpResponse.errorMessage;
     if (!httpResponse.body.empty()) {
@@ -382,7 +467,44 @@ ModelListResponse LLMApiClient::listOpenAIModels(const std::wstring &apiKey) {
   return response;
 }
 
-ModelListResponse LLMApiClient::listGeminiModels(const std::wstring &apiKey) {
+ModelListResponse LLMApiClient::listOpenAICompatibleModels(
+    const std::wstring &baseUrl, const std::wstring &apiKey, DWORD timeoutMs) {
+  ModelListResponse response;
+  std::wstring canonicalBaseUrl;
+  if (!normalizeLoopbackCompatibleBaseUrl(baseUrl, canonicalBaseUrl)) {
+    response.errorMessage = L"The compatible endpoint must be a literal loopback /v1 URL";
+    return response;
+  }
+
+  std::map<std::wstring, std::wstring> headers;
+  if (!apiKey.empty()) {
+    headers[L"Authorization"] = L"Bearer " + apiKey;
+  }
+  HttpResponse httpResponse = HttpClient::get(
+      canonicalBaseUrl + L"/models", headers, makeRequestOptions(timeoutMs, true));
+  if (!httpResponse.success) {
+    response.errorMessage = L"Local compatible model discovery failed: " +
+                            httpResponse.errorMessage;
+    return response;
+  }
+
+  std::wregex idPattern(L"\"id\"\\s*:\\s*\"([^\"]+)\"");
+  for (std::wsregex_iterator it(httpResponse.body.begin(), httpResponse.body.end(),
+                                idPattern),
+                             end;
+       it != end; ++it) {
+    addUniqueModel(response.models, (*it)[1].str());
+  }
+  if (response.models.empty()) {
+    response.errorMessage = L"Local compatible server returned no models";
+    return response;
+  }
+  response.success = true;
+  return response;
+}
+
+ModelListResponse LLMApiClient::listGeminiModels(const std::wstring &apiKey,
+                                                  DWORD timeoutMs) {
   ModelListResponse response;
 
   if (apiKey.empty()) {
@@ -394,7 +516,7 @@ ModelListResponse LLMApiClient::listGeminiModels(const std::wstring &apiKey) {
   headers[L"x-goog-api-key"] = apiKey;
   HttpResponse httpResponse =
       HttpClient::get(L"https://generativelanguage.googleapis.com/v1beta/models",
-                      headers);
+                      headers, makeRequestOptions(timeoutMs, false));
   if (!httpResponse.success) {
     response.errorMessage = L"HTTP request failed: " + httpResponse.errorMessage;
     if (!httpResponse.body.empty()) {
@@ -439,7 +561,8 @@ ModelListResponse LLMApiClient::listGeminiModels(const std::wstring &apiKey) {
   return response;
 }
 
-ModelListResponse LLMApiClient::listClaudeModels(const std::wstring &apiKey) {
+ModelListResponse LLMApiClient::listClaudeModels(const std::wstring &apiKey,
+                                                  DWORD timeoutMs) {
   ModelListResponse response;
 
   if (apiKey.empty()) {
@@ -451,7 +574,8 @@ ModelListResponse LLMApiClient::listClaudeModels(const std::wstring &apiKey) {
   headers[L"x-api-key"] = apiKey;
   headers[L"anthropic-version"] = L"2023-06-01";
 
-  HttpResponse httpResponse = HttpClient::get(L"https://api.anthropic.com/v1/models", headers);
+  HttpResponse httpResponse = HttpClient::get(
+      L"https://api.anthropic.com/v1/models", headers, makeRequestOptions(timeoutMs, false));
   if (!httpResponse.success) {
     response.errorMessage = L"HTTP request failed: " + httpResponse.errorMessage;
     if (!httpResponse.body.empty()) {
@@ -482,7 +606,7 @@ ModelListResponse LLMApiClient::listClaudeModels(const std::wstring &apiKey) {
 
 LLMResponse LLMApiClient::callOpenAI(const std::wstring &apiKey,
                                      const std::wstring &prompt,
-                                     const std::wstring &model) {
+                                     const std::wstring &model, DWORD timeoutMs) {
   LLMResponse response;
 
   if (apiKey.empty()) {
@@ -507,7 +631,8 @@ LLMResponse LLMApiClient::callOpenAI(const std::wstring &apiKey,
 
   // Make request
   HttpResponse httpResponse = HttpClient::post(
-      L"https://api.openai.com/v1/chat/completions", requestBody, headers);
+      L"https://api.openai.com/v1/chat/completions", requestBody, headers,
+      makeRequestOptions(timeoutMs, false));
 
   if (!httpResponse.success) {
     response.errorMessage =
@@ -540,9 +665,53 @@ LLMResponse LLMApiClient::callOpenAI(const std::wstring &apiKey,
   return response;
 }
 
+LLMResponse LLMApiClient::callOpenAICompatible(
+    const std::wstring &baseUrl, const std::wstring &apiKey,
+    const std::wstring &prompt, const std::wstring &model, DWORD timeoutMs) {
+  LLMResponse response;
+  std::wstring canonicalBaseUrl;
+  if (!normalizeLoopbackCompatibleBaseUrl(baseUrl, canonicalBaseUrl)) {
+    response.errorMessage = L"The compatible endpoint must be a literal loopback /v1 URL";
+    return response;
+  }
+  if (model.empty()) {
+    response.errorMessage = L"Select an available model before sending";
+    return response;
+  }
+
+  std::wstring requestBody =
+      L"{\"model\":\"" + escapeJsonString(model) + L"\","
+      L"\"messages\":[{\"role\":\"user\",\"content\":\"" +
+      escapeJsonString(prompt) + L"\"}],\"max_tokens\":2048}";
+  std::map<std::wstring, std::wstring> headers;
+  headers[L"Content-Type"] = L"application/json";
+  if (!apiKey.empty()) {
+    headers[L"Authorization"] = L"Bearer " + apiKey;
+  }
+  HttpResponse httpResponse = HttpClient::post(
+      canonicalBaseUrl + L"/chat/completions", requestBody, headers,
+      makeRequestOptions(timeoutMs, true));
+  if (!httpResponse.success) {
+    response.errorMessage = L"Local compatible request failed";
+    if (httpResponse.statusCode != 0) {
+      response.errorMessage += L" (HTTP " + std::to_wstring(httpResponse.statusCode) + L")";
+    }
+    return response;
+  }
+
+  std::wstring content = extractJsonValue(httpResponse.body, L"content");
+  if (content.empty()) {
+    response.errorMessage = L"Failed to parse local compatible response";
+    return response;
+  }
+  response.success = true;
+  response.content = content;
+  return response;
+}
+
 LLMResponse LLMApiClient::callGemini(const std::wstring &apiKey,
                                      const std::wstring &prompt,
-                                     const std::wstring &model) {
+                                     const std::wstring &model, DWORD timeoutMs) {
   LLMResponse response;
 
   if (apiKey.empty()) {
@@ -565,7 +734,8 @@ LLMResponse LLMApiClient::callGemini(const std::wstring &apiKey,
   headers[L"x-goog-api-key"] = apiKey;
 
   // Make request
-  HttpResponse httpResponse = HttpClient::post(url, requestBody, headers);
+  HttpResponse httpResponse = HttpClient::post(
+      url, requestBody, headers, makeRequestOptions(timeoutMs, false));
 
   if (!httpResponse.success) {
     response.errorMessage =
@@ -592,7 +762,7 @@ LLMResponse LLMApiClient::callGemini(const std::wstring &apiKey,
 
 LLMResponse LLMApiClient::callClaude(const std::wstring &apiKey,
                                      const std::wstring &prompt,
-                                     const std::wstring &model) {
+                                     const std::wstring &model, DWORD timeoutMs) {
   LLMResponse response;
 
   if (apiKey.empty()) {
@@ -617,7 +787,8 @@ LLMResponse LLMApiClient::callClaude(const std::wstring &apiKey,
 
   // Make request
   HttpResponse httpResponse = HttpClient::post(
-      L"https://api.anthropic.com/v1/messages", requestBody, headers);
+      L"https://api.anthropic.com/v1/messages", requestBody, headers,
+      makeRequestOptions(timeoutMs, false));
 
   if (!httpResponse.success) {
     response.errorMessage =

@@ -35,6 +35,9 @@ constexpr int kMaxFontSize = 18;
 constexpr int kDefaultDisplayScalePercent = 100;
 constexpr int kMinDisplayScalePercent = 80;
 constexpr int kMaxDisplayScalePercent = 150;
+constexpr int kDefaultRequestTimeoutSeconds = 30;
+constexpr int kMinRequestTimeoutSeconds = 1;
+constexpr int kMaxRequestTimeoutSeconds = 300;
 constexpr size_t kMaxMemoryChars = 3600;
 constexpr UINT kAiContextExplain = 1;
 constexpr UINT kAiContextRefactor = 2;
@@ -43,9 +46,10 @@ constexpr UINT kAiContextFix = 4;
 constexpr UINT kAiContextCustomTemplateBase = 100;
 constexpr size_t kContextTemplateCount = 3;
 
-enum class LLMProvider { OpenAI = 0, Gemini, Claude, Copilot, ProviderCount };
-constexpr std::array<LLMProvider, 3> kEnabledProviders = {
-    LLMProvider::OpenAI, LLMProvider::Gemini, LLMProvider::Claude};
+enum class LLMProvider { OpenAI = 0, Gemini, Claude, Copilot, LocalCompatible, ProviderCount };
+constexpr std::array<LLMProvider, 4> kEnabledProviders = {
+    LLMProvider::OpenAI, LLMProvider::Gemini, LLMProvider::Claude,
+    LLMProvider::LocalCompatible};
 
 enum class UiLanguage {
   English,
@@ -126,6 +130,9 @@ enum class TextId {
   SettingsOpenAIKeyLabel,
   SettingsGeminiKeyLabel,
   SettingsClaudeKeyLabel,
+  SettingsRequestTimeoutLabel,
+  SettingsLocalEndpointLabel,
+  SettingsLocalKeyLabel,
   SettingsDefaultProviderGroup,
   SettingsDefaultProviderLabel,
   SettingsLanguageLabel,
@@ -163,6 +170,9 @@ struct SelectionContext {
 struct AiRequest {
   LLMProvider provider = LLMProvider::OpenAI;
   std::wstring model;
+  std::wstring apiKey;
+  std::wstring compatibleBaseUrl;
+  DWORD timeoutMs = kDefaultRequestTimeoutSeconds * 1000;
   std::wstring userPrompt;
   std::wstring effectivePrompt;
   bool replaceSelection = false;
@@ -186,6 +196,12 @@ struct AIAssistantConfig {
   std::wstring openAIKey;
   std::wstring geminiKey;
   std::wstring claudeKey;
+  std::wstring localCompatibleKey;
+  std::wstring localCompatibleBaseUrl;
+  std::wstring openAIModel;
+  std::wstring geminiModel;
+  std::wstring claudeModel;
+  std::wstring localCompatibleModel;
   std::wstring customPromptInstructions;
   std::wstring identityTemplate;
   std::wstring rulesTemplate;
@@ -210,6 +226,7 @@ struct AIAssistantConfig {
   bool assignmentTemplateEnabled = true;
   bool memoryEnabled = false;
   int displayScalePercent = kDefaultDisplayScalePercent;
+  int requestTimeoutSeconds = kDefaultRequestTimeoutSeconds;
 };
 
 struct PromptSection {
@@ -258,6 +275,7 @@ int g_waitingAnimationFrame = 0;
 const wchar_t *kOpenAIKeyName = L"openai_apikey";
 const wchar_t *kGeminiKeyName = L"gemini_apikey";
 const wchar_t *kClaudeKeyName = L"claude_apikey";
+const wchar_t *kLocalCompatibleKeyName = L"local_compatible_apikey";
 const wchar_t *kCopilotOauthKeyName = L"copilot_oauth_token";
 const wchar_t *kDefaultProviderName = L"default_provider";
 const wchar_t *kUiLanguagePreferenceName = L"ui_language_preference";
@@ -279,6 +297,12 @@ const wchar_t *kAssignmentTemplateEnabledName =
     L"prompt_assignment_template_enabled";
 const wchar_t *kAssignmentTemplateName = L"prompt_assignment_template";
 const wchar_t *kDisplayScalePercentName = L"display_scale_percent";
+const wchar_t *kRequestTimeoutSecondsName = L"request_timeout_seconds";
+const wchar_t *kLocalCompatibleBaseUrlName = L"local_compatible_base_url";
+const wchar_t *kOpenAIModelName = L"openai_model";
+const wchar_t *kGeminiModelName = L"gemini_model";
+const wchar_t *kClaudeModelName = L"claude_model";
+const wchar_t *kLocalCompatibleModelName = L"local_compatible_model";
 const wchar_t *kMemoryEnabledName = L"memory_enabled";
 const wchar_t *kMemoryContentName = L"memory_content";
 const wchar_t *kContextTemplateEnabledNames[kContextTemplateCount] = {
@@ -333,6 +357,8 @@ std::wstring getProviderName(LLMProvider provider) {
     return L"Gemini";
   case LLMProvider::Claude:
     return L"Claude";
+  case LLMProvider::LocalCompatible:
+    return L"Local OpenAI-compatible";
   case LLMProvider::Copilot:
     return L"Copilot";
   default:
@@ -428,6 +454,12 @@ const wchar_t *tr(TextId id) {
       return L"Gemini API Key:";
     case TextId::SettingsClaudeKeyLabel:
       return L"Claude API Key:";
+    case TextId::SettingsRequestTimeoutLabel:
+      return L"要求逾時（秒）：";
+    case TextId::SettingsLocalEndpointLabel:
+      return L"本機 /v1 端點：";
+    case TextId::SettingsLocalKeyLabel:
+      return L"本機 API Key（選填）：";
     case TextId::SettingsDefaultProviderGroup:
       return L"\u9810\u8A2D\u4F9B\u61C9\u5546";
     case TextId::SettingsDefaultProviderLabel:
@@ -494,6 +526,12 @@ const wchar_t *tr(TextId id) {
     return L"Gemini API Key:";
   case TextId::SettingsClaudeKeyLabel:
     return L"Claude API Key:";
+  case TextId::SettingsRequestTimeoutLabel:
+    return L"Request timeout (seconds):";
+  case TextId::SettingsLocalEndpointLabel:
+    return L"Local /v1 endpoint:";
+  case TextId::SettingsLocalKeyLabel:
+    return L"Local API key (optional):";
   case TextId::SettingsDefaultProviderGroup:
     return L"Default Provider";
   case TextId::SettingsDefaultProviderLabel:
@@ -613,6 +651,14 @@ PromptDetailLevel sanitizePromptDetailLevel(int rawValue) {
 
 int clampDisplayScalePercent(int value) {
   return std::clamp(value, kMinDisplayScalePercent, kMaxDisplayScalePercent);
+}
+
+int clampRequestTimeoutSeconds(int value) {
+  return std::clamp(value, kMinRequestTimeoutSeconds, kMaxRequestTimeoutSeconds);
+}
+
+DWORD requestTimeoutMilliseconds(int seconds) {
+  return static_cast<DWORD>(clampRequestTimeoutSeconds(seconds)) * 1000;
 }
 
 int fontSizeFromDisplayScale(int displayScalePercent) {
@@ -1179,6 +1225,8 @@ std::wstring getProviderApiKey(LLMProvider provider) {
     return trimWhitespace(SecureStorage::loadApiKey(kGeminiKeyName));
   case LLMProvider::Claude:
     return trimWhitespace(SecureStorage::loadApiKey(kClaudeKeyName));
+  case LLMProvider::LocalCompatible:
+    return trimWhitespace(SecureStorage::loadApiKey(kLocalCompatibleKeyName));
   default:
     return L"";
   }
@@ -1195,6 +1243,22 @@ void wipeConfigSecrets(AIAssistantConfig &config) {
   wipeString(config.openAIKey);
   wipeString(config.geminiKey);
   wipeString(config.claudeKey);
+  wipeString(config.localCompatibleKey);
+}
+
+std::wstring &configuredModel(AIAssistantConfig &config, LLMProvider provider) {
+  switch (provider) {
+  case LLMProvider::OpenAI: return config.openAIModel;
+  case LLMProvider::Gemini: return config.geminiModel;
+  case LLMProvider::Claude: return config.claudeModel;
+  case LLMProvider::LocalCompatible: return config.localCompatibleModel;
+  default: return config.openAIModel;
+  }
+}
+
+const std::wstring &configuredModel(const AIAssistantConfig &config,
+                                    LLMProvider provider) {
+  return configuredModel(const_cast<AIAssistantConfig &>(config), provider);
 }
 
 bool parseStoredBool(const std::wstring &value, bool defaultValue) {
@@ -1284,6 +1348,16 @@ void loadPreferencesFromSettings(AIAssistantConfig &config) {
   config.displayScalePercent = clampDisplayScalePercent(parseStoredInt(
       SettingsStorage::loadString(kDisplayScalePercentName),
       config.displayScalePercent));
+  config.requestTimeoutSeconds = clampRequestTimeoutSeconds(parseStoredInt(
+      SettingsStorage::loadString(kRequestTimeoutSecondsName),
+      config.requestTimeoutSeconds));
+  config.localCompatibleBaseUrl =
+      SettingsStorage::loadString(kLocalCompatibleBaseUrlName);
+  config.openAIModel = SettingsStorage::loadString(kOpenAIModelName);
+  config.geminiModel = SettingsStorage::loadString(kGeminiModelName);
+  config.claudeModel = SettingsStorage::loadString(kClaudeModelName);
+  config.localCompatibleModel =
+      SettingsStorage::loadString(kLocalCompatibleModelName);
   config.memoryEnabled =
       parseStoredBool(SettingsStorage::loadString(kMemoryEnabledName),
                       config.memoryEnabled);
@@ -1350,6 +1424,7 @@ void loadPreferencesFromLegacySecureStorage(AIAssistantConfig &config) {
   config.displayScalePercent = clampDisplayScalePercent(parseStoredInt(
       SecureStorage::loadLegacyValue(kDisplayScalePercentName),
       config.displayScalePercent));
+  config.requestTimeoutSeconds = kDefaultRequestTimeoutSeconds;
   config.memoryEnabled = SecureStorage::loadLegacyValue(kMemoryEnabledName) == L"1";
   config.memoryContent = SecureStorage::loadLegacyValue(kMemoryContentName);
   if (config.memoryContent.size() > kMaxMemoryChars) {
@@ -1443,6 +1518,16 @@ void savePreferencesToSettings(const AIAssistantConfig &config) {
   SettingsStorage::saveString(kDisplayScalePercentName,
                               std::to_wstring(clampDisplayScalePercent(
                                   config.displayScalePercent)));
+  SettingsStorage::saveString(kRequestTimeoutSecondsName,
+                              std::to_wstring(clampRequestTimeoutSeconds(
+                                  config.requestTimeoutSeconds)));
+  SettingsStorage::saveString(kLocalCompatibleBaseUrlName,
+                              config.localCompatibleBaseUrl);
+  SettingsStorage::saveString(kOpenAIModelName, config.openAIModel);
+  SettingsStorage::saveString(kGeminiModelName, config.geminiModel);
+  SettingsStorage::saveString(kClaudeModelName, config.claudeModel);
+  SettingsStorage::saveString(kLocalCompatibleModelName,
+                              config.localCompatibleModel);
   SettingsStorage::saveString(kMemoryEnabledName,
                               config.memoryEnabled ? L"1" : L"0");
   std::wstring memoryContent = config.memoryContent;
@@ -1553,6 +1638,18 @@ void loadConfig() {
       sanitizePromptDetailLevel(static_cast<int>(g_config.detailLevel));
   g_config.displayScalePercent =
       clampDisplayScalePercent(g_config.displayScalePercent);
+  g_config.requestTimeoutSeconds =
+      clampRequestTimeoutSeconds(g_config.requestTimeoutSeconds);
+  if (!g_config.localCompatibleBaseUrl.empty()) {
+    std::wstring canonicalBaseUrl;
+    if (LLMApiClient::normalizeLoopbackCompatibleBaseUrl(
+            g_config.localCompatibleBaseUrl, canonicalBaseUrl)) {
+      g_config.localCompatibleBaseUrl = canonicalBaseUrl;
+    } else {
+      g_config.localCompatibleBaseUrl.clear();
+      g_config.localCompatibleModel.clear();
+    }
+  }
   g_fontSize = fontSizeFromDisplayScale(g_config.displayScalePercent);
 
   bool savedDefaultTemplates = false;
@@ -1588,6 +1685,7 @@ void saveConfig(const AIAssistantConfig &config) {
   SecureStorage::saveApiKey(kOpenAIKeyName, config.openAIKey);
   SecureStorage::saveApiKey(kGeminiKeyName, config.geminiKey);
   SecureStorage::saveApiKey(kClaudeKeyName, config.claudeKey);
+  SecureStorage::saveApiKey(kLocalCompatibleKeyName, config.localCompatibleKey);
   savePreferencesToSettings(config);
   cleanupSecurePreferenceBlobs();
   g_config = config;
@@ -1605,6 +1703,18 @@ void saveConfig(const AIAssistantConfig &config) {
       sanitizePromptDetailLevel(static_cast<int>(g_config.detailLevel));
   g_config.displayScalePercent =
       clampDisplayScalePercent(g_config.displayScalePercent);
+  g_config.requestTimeoutSeconds =
+      clampRequestTimeoutSeconds(g_config.requestTimeoutSeconds);
+  if (!g_config.localCompatibleBaseUrl.empty()) {
+    std::wstring canonicalBaseUrl;
+    if (LLMApiClient::normalizeLoopbackCompatibleBaseUrl(
+            g_config.localCompatibleBaseUrl, canonicalBaseUrl)) {
+      g_config.localCompatibleBaseUrl = canonicalBaseUrl;
+    } else {
+      g_config.localCompatibleBaseUrl.clear();
+      g_config.localCompatibleModel.clear();
+    }
+  }
   g_fontSize = fontSizeFromDisplayScale(g_config.displayScalePercent);
 }
 
@@ -1938,6 +2048,12 @@ void applyLocalizedSettingsText(HWND hwnd) {
                    tr(TextId::SettingsGeminiKeyLabel));
   ::SetWindowTextW(::GetDlgItem(hwnd, IDC_CLAUDE_KEY_LABEL),
                    tr(TextId::SettingsClaudeKeyLabel));
+  ::SetWindowTextW(::GetDlgItem(hwnd, IDC_REQUEST_TIMEOUT_LABEL),
+                   tr(TextId::SettingsRequestTimeoutLabel));
+  ::SetWindowTextW(::GetDlgItem(hwnd, IDC_LOCAL_COMPATIBLE_ENDPOINT_LABEL),
+                   tr(TextId::SettingsLocalEndpointLabel));
+  ::SetWindowTextW(::GetDlgItem(hwnd, IDC_LOCAL_COMPATIBLE_KEY_LABEL),
+                   tr(TextId::SettingsLocalKeyLabel));
   ::SetWindowTextW(::GetDlgItem(hwnd, IDC_DEFAULT_PROVIDER_GROUP),
                    tr(TextId::SettingsDefaultProviderGroup));
   ::SetWindowTextW(::GetDlgItem(hwnd, IDC_DEFAULT_PROVIDER_LABEL),
@@ -2060,7 +2176,7 @@ void updateModelCombo() {
   }
 
   std::wstring apiKey = getProviderApiKey(g_currentProvider);
-  if (apiKey.empty()) {
+  if (apiKey.empty() && g_currentProvider != LLMProvider::LocalCompatible) {
     populateModelComboPlaceholder(modelCombo, g_uiLanguage == UiLanguage::Chinese ? L"\u8ACB\u5148\u5728\u8A2D\u5B9A\u4E2D\u8A2D\u5B9A API Key" : L"Configure API key in Settings");
     return;
   }
@@ -2068,13 +2184,21 @@ void updateModelCombo() {
   ModelListResponse response;
   switch (g_currentProvider) {
   case LLMProvider::OpenAI:
-    response = LLMApiClient::listOpenAIModels(apiKey);
+    response = LLMApiClient::listOpenAIModels(
+        apiKey, requestTimeoutMilliseconds(g_config.requestTimeoutSeconds));
     break;
   case LLMProvider::Gemini:
-    response = LLMApiClient::listGeminiModels(apiKey);
+    response = LLMApiClient::listGeminiModels(
+        apiKey, requestTimeoutMilliseconds(g_config.requestTimeoutSeconds));
     break;
   case LLMProvider::Claude:
-    response = LLMApiClient::listClaudeModels(apiKey);
+    response = LLMApiClient::listClaudeModels(
+        apiKey, requestTimeoutMilliseconds(g_config.requestTimeoutSeconds));
+    break;
+  case LLMProvider::LocalCompatible:
+    response = LLMApiClient::listOpenAICompatibleModels(
+        g_config.localCompatibleBaseUrl, apiKey,
+        requestTimeoutMilliseconds(g_config.requestTimeoutSeconds));
     break;
   default:
     populateModelComboPlaceholder(modelCombo, g_uiLanguage == UiLanguage::Chinese ? L"\u4F9B\u61C9\u5546\u7121\u6CD5\u4F7F\u7528" : L"Provider unavailable");
@@ -2096,18 +2220,27 @@ void updateModelCombo() {
   ::EnableWindow(modelCombo, TRUE);
   ::SendMessageW(modelCombo, CB_RESETCONTENT, 0, 0);
 
-  int selectedIndex = 0;
+  const std::wstring selectedModel = configuredModel(g_config, g_currentProvider);
+  int selectedIndex = -1;
   for (size_t i = 0; i < response.models.size(); ++i) {
     const std::wstring &model = response.models[i];
     ::SendMessageW(modelCombo, CB_ADDSTRING, 0,
                    reinterpret_cast<LPARAM>(model.c_str()));
-    if (!g_currentModel.empty() && g_currentModel == model) {
+    if (!selectedModel.empty() && selectedModel == model) {
       selectedIndex = static_cast<int>(i);
     }
   }
 
   ::SendMessageW(modelCombo, CB_SETCURSEL, static_cast<WPARAM>(selectedIndex), 0);
-  g_currentModel = response.models[static_cast<size_t>(selectedIndex)];
+  if (selectedIndex >= 0) {
+    g_currentModel = selectedModel;
+  } else {
+    g_currentModel.clear();
+    addMessage(false, g_uiLanguage == UiLanguage::Chinese
+                          ? L"[模型] 已設定的模型不可用；請明確選擇一個模型。"
+                          : L"[Model] The configured model is unavailable; select a model.");
+    updateChatDisplay();
+  }
   ::SendMessageW(modelCombo, CB_SETDROPPEDWIDTH, 250, 0);
 }
 
@@ -2560,14 +2693,19 @@ void initPanelControls() {
 
 LLMResponse callProvider(LLMProvider provider, const std::wstring &apiKey,
                          const std::wstring &prompt,
-                         const std::wstring &model) {
+                         const std::wstring &model,
+                         const std::wstring &compatibleBaseUrl,
+                         DWORD timeoutMs) {
   switch (provider) {
   case LLMProvider::OpenAI:
-    return LLMApiClient::callOpenAI(apiKey, prompt, model);
+    return LLMApiClient::callOpenAI(apiKey, prompt, model, timeoutMs);
   case LLMProvider::Gemini:
-    return LLMApiClient::callGemini(apiKey, prompt, model);
+    return LLMApiClient::callGemini(apiKey, prompt, model, timeoutMs);
   case LLMProvider::Claude:
-    return LLMApiClient::callClaude(apiKey, prompt, model);
+    return LLMApiClient::callClaude(apiKey, prompt, model, timeoutMs);
+  case LLMProvider::LocalCompatible:
+    return LLMApiClient::callOpenAICompatible(
+        compatibleBaseUrl, apiKey, prompt, model, timeoutMs);
   default: {
     LLMResponse unsupported;
     unsupported.errorMessage = L"Unsupported provider";
@@ -2576,15 +2714,17 @@ LLMResponse callProvider(LLMProvider provider, const std::wstring &apiKey,
   }
 }
 
-std::wstring invokeProvider(LLMProvider provider, const std::wstring &model,
-                            const std::wstring &prompt) {
+std::wstring invokeProvider(const AiRequest &request) {
+  const LLMProvider provider = request.provider;
+  const std::wstring &model = request.model;
+  const std::wstring &prompt = request.effectivePrompt;
   if (provider == LLMProvider::Copilot) {
     return L"[Notice] GitHub Copilot is currently paused in this build.";
   }
 
-  std::wstring apiKey = getProviderApiKey(provider);
+  std::wstring apiKey = request.apiKey;
 
-  if (apiKey.empty()) {
+  if (apiKey.empty() && provider != LLMProvider::LocalCompatible) {
     return L"[Error] API key not configured for " + getProviderName(provider) +
            L". Open Settings to configure it.";
   }
@@ -2594,10 +2734,12 @@ std::wstring invokeProvider(LLMProvider provider, const std::wstring &model,
            L". Check your API key and refresh the model list from Settings.";
   }
 
-  LLMResponse response = callProvider(provider, apiKey, prompt, model);
+  LLMResponse response = callProvider(provider, apiKey, prompt, model,
+                                      request.compatibleBaseUrl, request.timeoutMs);
   if (response.success) {
     if (isInterruptedConversationMessage(response.content)) {
-      LLMResponse retry = callProvider(provider, apiKey, prompt, model);
+      LLMResponse retry = callProvider(provider, apiKey, prompt, model,
+                                       request.compatibleBaseUrl, request.timeoutMs);
       if (retry.success && !isInterruptedConversationMessage(retry.content)) {
         wipeString(apiKey);
         return retry.content;
@@ -2610,7 +2752,8 @@ std::wstring invokeProvider(LLMProvider provider, const std::wstring &model,
   }
 
   if (isInterruptedConversationMessage(response.errorMessage)) {
-    LLMResponse retry = callProvider(provider, apiKey, prompt, model);
+    LLMResponse retry = callProvider(provider, apiKey, prompt, model,
+                                     request.compatibleBaseUrl, request.timeoutMs);
     if (retry.success && !isInterruptedConversationMessage(retry.content)) {
       wipeString(apiKey);
       return retry.content;
@@ -2624,8 +2767,10 @@ std::wstring invokeProvider(LLMProvider provider, const std::wstring &model,
          L" API call failed:\n" + response.errorMessage;
 }
 
-std::wstring invokeProvider(const std::wstring &prompt) {
-  return invokeProvider(g_currentProvider, g_currentModel, prompt);
+void captureRequestTransport(AiRequest &request) {
+  request.apiKey = getProviderApiKey(request.provider);
+  request.compatibleBaseUrl = g_config.localCompatibleBaseUrl;
+  request.timeoutMs = requestTimeoutMilliseconds(g_config.requestTimeoutSeconds);
 }
 
 void startAiRequest(const AiRequest &request) {
@@ -2649,8 +2794,7 @@ void startAiRequest(const AiRequest &request) {
   HWND targetPanel = g_panel;
   std::thread([workerRequest, targetPanel]() {
     auto result = std::make_unique<AiRequestResult>();
-    result->response = invokeProvider(workerRequest.provider, workerRequest.model,
-                                      workerRequest.effectivePrompt);
+    result->response = invokeProvider(workerRequest);
     result->replaceSelection = workerRequest.replaceSelection;
     result->selection = workerRequest.selection;
 
@@ -2706,6 +2850,7 @@ void sendPrompt(const std::wstring &prompt) {
   AiRequest request;
   request.provider = g_currentProvider;
   request.model = g_currentModel;
+  captureRequestTransport(request);
   request.userPrompt = prompt;
   request.effectivePrompt = buildEffectivePrompt(prompt, false);
   startAiRequest(request);
@@ -3060,6 +3205,49 @@ INT_PTR CALLBACK ContextTemplatesDlgProc(HWND hwnd, UINT message, WPARAM wParam,
   return FALSE;
 }
 
+bool captureConnectionSettings(HWND hwnd, AIAssistantConfig &config,
+                               bool showValidationError) {
+  wchar_t text[512]{};
+  ::GetWindowTextW(::GetDlgItem(hwnd, IDC_OPENAI_KEY_EDIT), text, 512);
+  config.openAIKey = trimWhitespace(text);
+  ::GetWindowTextW(::GetDlgItem(hwnd, IDC_GEMINI_KEY_EDIT), text, 512);
+  config.geminiKey = trimWhitespace(text);
+  ::GetWindowTextW(::GetDlgItem(hwnd, IDC_CLAUDE_KEY_EDIT), text, 512);
+  config.claudeKey = trimWhitespace(text);
+  ::GetWindowTextW(::GetDlgItem(hwnd, IDC_LOCAL_COMPATIBLE_KEY_EDIT), text, 512);
+  config.localCompatibleKey = trimWhitespace(text);
+  ::GetWindowTextW(::GetDlgItem(hwnd, IDC_LOCAL_COMPATIBLE_ENDPOINT_EDIT), text, 512);
+  config.localCompatibleBaseUrl = trimWhitespace(text);
+  SecureZeroMemory(text, sizeof(text));
+
+  BOOL parsed = FALSE;
+  const UINT timeout = ::GetDlgItemInt(hwnd, IDC_REQUEST_TIMEOUT_EDIT, &parsed, FALSE);
+  if (!parsed || timeout < kMinRequestTimeoutSeconds ||
+      timeout > kMaxRequestTimeoutSeconds) {
+    if (showValidationError) {
+      ::MessageBoxW(hwnd, L"Request timeout must be a whole number from 1 to 300 seconds.",
+                    tr(TextId::SettingsTitle), MB_OK | MB_ICONWARNING);
+    }
+    return false;
+  }
+  config.requestTimeoutSeconds = static_cast<int>(timeout);
+
+  if (!config.localCompatibleBaseUrl.empty()) {
+    std::wstring canonicalBaseUrl;
+    if (!LLMApiClient::normalizeLoopbackCompatibleBaseUrl(
+            config.localCompatibleBaseUrl, canonicalBaseUrl)) {
+      if (showValidationError) {
+        ::MessageBoxW(hwnd,
+                      L"Local endpoint must be http://127.0.0.1:<port>/v1 or http://[::1]:<port>/v1.",
+                      tr(TextId::SettingsTitle), MB_OK | MB_ICONWARNING);
+      }
+      return false;
+    }
+    config.localCompatibleBaseUrl = canonicalBaseUrl;
+  }
+  return true;
+}
+
 INT_PTR CALLBACK SettingsDlgProc(HWND hwnd, UINT message, WPARAM wParam,
                                  LPARAM lParam) {
   auto *config = reinterpret_cast<AIAssistantConfig *>(
@@ -3077,6 +3265,12 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwnd, UINT message, WPARAM wParam,
                      incoming->geminiKey.c_str());
     ::SetWindowTextW(::GetDlgItem(hwnd, IDC_CLAUDE_KEY_EDIT),
                      incoming->claudeKey.c_str());
+    ::SetWindowTextW(::GetDlgItem(hwnd, IDC_LOCAL_COMPATIBLE_KEY_EDIT),
+                     incoming->localCompatibleKey.c_str());
+    ::SetWindowTextW(::GetDlgItem(hwnd, IDC_LOCAL_COMPATIBLE_ENDPOINT_EDIT),
+                     incoming->localCompatibleBaseUrl.c_str());
+    ::SetDlgItemInt(hwnd, IDC_REQUEST_TIMEOUT_EDIT,
+                    static_cast<UINT>(incoming->requestTimeoutSeconds), FALSE);
 
     HWND providerCombo = ::GetDlgItem(hwnd, IDC_DEFAULT_PROVIDER_COMBO);
     ::SendMessageW(providerCombo, CB_RESETCONTENT, 0, 0);
@@ -3100,6 +3294,8 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwnd, UINT message, WPARAM wParam,
                    maskChar, 0);
     ::SendMessageW(::GetDlgItem(hwnd, IDC_CLAUDE_KEY_EDIT), EM_SETPASSWORDCHAR,
                    maskChar, 0);
+    ::SendMessageW(::GetDlgItem(hwnd, IDC_LOCAL_COMPATIBLE_KEY_EDIT),
+                   EM_SETPASSWORDCHAR, maskChar, 0);
     ::SendMessageW(::GetDlgItem(hwnd, IDC_SEND_SHORTCUT_CHECK), BM_SETCHECK,
                    incoming->requireCtrlEnterToSend ? BST_CHECKED : BST_UNCHECKED,
                    0);
@@ -3194,14 +3390,9 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwnd, UINT message, WPARAM wParam,
         return TRUE;
       }
 
-      wchar_t text[512]{};
-      ::GetWindowTextW(::GetDlgItem(hwnd, IDC_OPENAI_KEY_EDIT), text, 512);
-      config->openAIKey = trimWhitespace(text);
-      ::GetWindowTextW(::GetDlgItem(hwnd, IDC_GEMINI_KEY_EDIT), text, 512);
-      config->geminiKey = trimWhitespace(text);
-      ::GetWindowTextW(::GetDlgItem(hwnd, IDC_CLAUDE_KEY_EDIT), text, 512);
-      config->claudeKey = trimWhitespace(text);
-      SecureZeroMemory(text, sizeof(text));
+      if (!captureConnectionSettings(hwnd, *config, true)) {
+        return TRUE;
+      }
       capturePromptSettingsFromDialog(hwnd, *config);
 
       int providerSelection = static_cast<int>(::SendMessageW(
@@ -3223,11 +3414,15 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwnd, UINT message, WPARAM wParam,
         apiKey = config->claudeKey;
         providerName = L"Claude";
         break;
+      case LLMProvider::LocalCompatible:
+        apiKey = config->localCompatibleKey;
+        providerName = L"Local OpenAI-compatible";
+        break;
       default:
         return TRUE;
       }
 
-      if (apiKey.empty()) {
+      if (apiKey.empty() && provider != LLMProvider::LocalCompatible) {
         const std::wstring warningText =
             g_uiLanguage == UiLanguage::Chinese
                 ? L"\u5C1A\u672A\u8A2D\u5B9A " + providerName + L" API Key\u3002"
@@ -3240,11 +3435,18 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwnd, UINT message, WPARAM wParam,
       HCURSOR oldCursor = ::SetCursor(::LoadCursorW(nullptr, IDC_WAIT));
       ModelListResponse testResponse;
       if (provider == LLMProvider::OpenAI) {
-        testResponse = LLMApiClient::listOpenAIModels(apiKey);
+        testResponse = LLMApiClient::listOpenAIModels(apiKey,
+            requestTimeoutMilliseconds(config->requestTimeoutSeconds));
       } else if (provider == LLMProvider::Gemini) {
-        testResponse = LLMApiClient::listGeminiModels(apiKey);
+        testResponse = LLMApiClient::listGeminiModels(apiKey,
+            requestTimeoutMilliseconds(config->requestTimeoutSeconds));
       } else if (provider == LLMProvider::Claude) {
-        testResponse = LLMApiClient::listClaudeModels(apiKey);
+        testResponse = LLMApiClient::listClaudeModels(apiKey,
+            requestTimeoutMilliseconds(config->requestTimeoutSeconds));
+      } else if (provider == LLMProvider::LocalCompatible) {
+        testResponse = LLMApiClient::listOpenAICompatibleModels(
+            config->localCompatibleBaseUrl, apiKey,
+            requestTimeoutMilliseconds(config->requestTimeoutSeconds));
       }
       wipeString(apiKey);
       ::SetCursor(oldCursor);
@@ -3284,14 +3486,9 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwnd, UINT message, WPARAM wParam,
         return TRUE;
       }
 
-      wchar_t text[512]{};
-      ::GetWindowTextW(::GetDlgItem(hwnd, IDC_OPENAI_KEY_EDIT), text, 512);
-      config->openAIKey = trimWhitespace(text);
-      ::GetWindowTextW(::GetDlgItem(hwnd, IDC_GEMINI_KEY_EDIT), text, 512);
-      config->geminiKey = trimWhitespace(text);
-      ::GetWindowTextW(::GetDlgItem(hwnd, IDC_CLAUDE_KEY_EDIT), text, 512);
-      config->claudeKey = trimWhitespace(text);
-      SecureZeroMemory(text, sizeof(text));
+      if (!captureConnectionSettings(hwnd, *config, true)) {
+        return TRUE;
+      }
       capturePromptSettingsFromDialog(hwnd, *config);
 
       ::EndDialog(hwnd, IDOK);
@@ -3313,6 +3510,7 @@ void openSettingsDialog() {
   edited.openAIKey = SecureStorage::loadApiKey(kOpenAIKeyName);
   edited.geminiKey = SecureStorage::loadApiKey(kGeminiKeyName);
   edited.claudeKey = SecureStorage::loadApiKey(kClaudeKeyName);
+  edited.localCompatibleKey = SecureStorage::loadApiKey(kLocalCompatibleKeyName);
   if (::DialogBoxParamW(g_hInst, MAKEINTRESOURCEW(IDD_AIASSISTANT_SETTINGS),
                         g_nppData._nppHandle, SettingsDlgProc,
                         reinterpret_cast<LPARAM>(&edited)) == IDOK) {
@@ -3543,6 +3741,7 @@ INT_PTR CALLBACK PanelDlgProc(HWND hwnd, UINT message, WPARAM wParam,
         if (selection >= 0 &&
             selection < static_cast<int>(kEnabledProviders.size())) {
           g_currentProvider = comboIndexToProvider(selection);
+          g_currentModel.clear();
           updateModelCombo();
           updateChatDisplay();
         }
@@ -3558,6 +3757,8 @@ INT_PTR CALLBACK PanelDlgProc(HWND hwnd, UINT message, WPARAM wParam,
           ::SendMessageW(combo, CB_GETLBTEXT, selection,
                          reinterpret_cast<LPARAM>(model));
           g_currentModel = model;
+          configuredModel(g_config, g_currentProvider) = g_currentModel;
+          savePreferencesToSettings(g_config);
         }
       }
       return TRUE;
@@ -3657,6 +3858,7 @@ void runSelectionCommand(const wchar_t *prefix, SelectionAction action) {
   AiRequest request;
   request.provider = g_currentProvider;
   request.model = g_currentModel;
+  captureRequestTransport(request);
   request.userPrompt = prompt;
   request.effectivePrompt =
       buildEffectivePrompt(prompt, action == SelectionAction::ReplaceSelection);
@@ -3684,9 +3886,9 @@ void runCustomContextTemplate(size_t index) {
                             : SelectionAction::Explain);
 }
 
-void showAiContextMenu(HWND scintilla, LPARAM lParam) {
+bool showAiContextMenu(HWND scintilla, LPARAM lParam) {
   if (!scintilla || getSelectionText(scintilla).empty()) {
-    return;
+    return false;
   }
 
   refreshUiLanguage();
@@ -3701,7 +3903,7 @@ void showAiContextMenu(HWND scintilla, LPARAM lParam) {
 
   HMENU menu = ::CreatePopupMenu();
   if (!menu) {
-    return;
+    return false;
   }
 
   ::AppendMenuW(menu, MF_STRING, kAiContextExplain, tr(TextId::ContextExplain));
@@ -3753,6 +3955,7 @@ void showAiContextMenu(HWND scintilla, LPARAM lParam) {
     }
     break;
   }
+  return true;
 }
 
 void installScintillaSubclass(HWND scintilla, size_t index) {
@@ -3796,9 +3999,16 @@ LRESULT CALLBACK ScintillaSubclassProc(HWND hwnd, UINT message, WPARAM wParam,
     return ::DefWindowProcW(hwnd, message, wParam, lParam);
   }
 
-  if (message == WM_CONTEXTMENU && !getSelectionText(hwnd).empty()) {
-    showAiContextMenu(hwnd, lParam);
-    return 0;
+  if (message == WM_CONTEXTMENU) {
+    const bool isMouseInvocation = lParam != static_cast<LPARAM>(-1);
+    const bool hasSelection = isMouseInvocation && !getSelectionText(hwnd).empty();
+    const bool ctrlPressed = (::GetKeyState(VK_CONTROL) & 0x8000) != 0;
+
+    if (hasSelection && ctrlPressed && showAiContextMenu(hwnd, lParam)) {
+      return 0;
+    }
+
+    return ::CallWindowProcW(original, hwnd, message, wParam, lParam);
   }
 
   return ::CallWindowProcW(original, hwnd, message, wParam, lParam);

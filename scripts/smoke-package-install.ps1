@@ -65,7 +65,7 @@ if ($pdbFiles) {
 }
 
 $docRoot = Join-Path $extractRoot "doc\$($manifest.folderName)"
-$requiredDocs = @("README.md", "USAGE.md", "LICENSE")
+$requiredDocs = @("README.md", "README_zh-TW.md", "USAGE.md", "LOCAL_PROVIDER_AND_TIMEOUT.md", "CHANGELOG.md", "LICENSE")
 foreach ($requiredDoc in $requiredDocs) {
     $docPath = Join-Path $docRoot $requiredDoc
     if (-not (Test-Path $docPath)) {

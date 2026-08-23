@@ -20,6 +20,7 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <windows.h>
 
 struct HttpResponse;
 
@@ -56,21 +57,38 @@ class LLMApiClient {
 public:
   static LLMResponse callOpenAI(const std::wstring &apiKey,
                                 const std::wstring &prompt,
-                                const std::wstring &model = L"gpt-4o-mini");
+                                const std::wstring &model,
+                                DWORD timeoutMs);
 
   static LLMResponse callGemini(const std::wstring &apiKey,
                                 const std::wstring &prompt,
-                                const std::wstring &model = L"gemini-2.0-flash");
+                                const std::wstring &model,
+                                DWORD timeoutMs);
 
   static LLMResponse
   callClaude(const std::wstring &apiKey, const std::wstring &prompt,
-             const std::wstring &model = L"claude-sonnet-4-20250514");
+             const std::wstring &model, DWORD timeoutMs);
 
-  static ModelListResponse listOpenAIModels(const std::wstring &apiKey);
+  static LLMResponse callOpenAICompatible(const std::wstring &baseUrl,
+                                           const std::wstring &apiKey,
+                                           const std::wstring &prompt,
+                                           const std::wstring &model,
+                                           DWORD timeoutMs);
 
-  static ModelListResponse listGeminiModels(const std::wstring &apiKey);
+  static ModelListResponse listOpenAIModels(const std::wstring &apiKey,
+                                            DWORD timeoutMs);
 
-  static ModelListResponse listClaudeModels(const std::wstring &apiKey);
+  static ModelListResponse listGeminiModels(const std::wstring &apiKey,
+                                            DWORD timeoutMs);
+
+  static ModelListResponse listClaudeModels(const std::wstring &apiKey,
+                                            DWORD timeoutMs);
+
+  static ModelListResponse listOpenAICompatibleModels(
+      const std::wstring &baseUrl, const std::wstring &apiKey, DWORD timeoutMs);
+
+  static bool normalizeLoopbackCompatibleBaseUrl(
+      const std::wstring &input, std::wstring &canonicalBaseUrl);
 
   static CopilotDeviceCode initiateCopilotDeviceFlow();
   

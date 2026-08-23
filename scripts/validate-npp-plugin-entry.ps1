@@ -6,6 +6,8 @@ param(
     [ValidateSet('32', '64', 'arm64')]
     [string]$Architecture = '64',
 
+    [switch]$RequireDirectHttpsZip,
+
     [string]$SchemaUrl = 'https://raw.githubusercontent.com/notepad-plus-plus/nppPluginList/master/pl.schema',
 
     [string]$Python = 'python'
@@ -50,11 +52,14 @@ $repositoryUri = $null
 if (-not [System.Uri]::TryCreate($entry.repository, [System.UriKind]::Absolute, [ref]$repositoryUri)) {
     throw "repository is not an absolute URI: '$($entry.repository)'."
 }
-if ($repositoryUri.Scheme -ne 'https') {
-    throw "repository must use HTTPS. Got '$($repositoryUri.Scheme)'."
-}
-if (-not $repositoryUri.AbsolutePath.EndsWith('.zip', [System.StringComparison]::OrdinalIgnoreCase)) {
-    throw "repository must point directly to a .zip asset. Got '$($entry.repository)'."
+
+if ($RequireDirectHttpsZip) {
+    if ($repositoryUri.Scheme -ne 'https') {
+        throw "repository must use HTTPS for a release submission. Got '$($repositoryUri.Scheme)'."
+    }
+    if (-not $repositoryUri.AbsolutePath.EndsWith('.zip', [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "repository must point directly to a .zip release asset. Got '$($entry.repository)'."
+    }
 }
 
 $pythonCommand = Get-Command $Python -ErrorAction SilentlyContinue
@@ -119,6 +124,7 @@ print('SCHEMA_PASS')
         Version = $entry.version
         Repository = $entry.repository
         Id = $entry.id
+        RequireDirectHttpsZip = [bool]$RequireDirectHttpsZip
         SchemaUrl = $SchemaUrl
         SchemaSha256 = $schemaSha256
         Result = 'PASS'

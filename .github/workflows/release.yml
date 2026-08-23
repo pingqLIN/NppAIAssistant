@@ -212,17 +212,27 @@ jobs:
             throw "Artifact hash changed between jobs. Expected $expected; got $actual."
           }
 
-      - name: Publish GitHub Release
-        id: release
-        uses: softprops/action-gh-release@v3
-        with:
-          name: NppAIAssistant v${{ needs.package-x64.outputs.version }}
-          generate_release_notes: true
-          fail_on_unmatched_files: true
-          overwrite_files: false
-          files: |
-            release-artifact/${{ needs.package-x64.outputs.zip_name }}
-            release-artifact/${{ needs.package-x64.outputs.zip_name }}.sha256
+      - name: Publish GitHub Release from existing tag
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $zip = Join-Path $PWD 'release-artifact\${{ needs.package-x64.outputs.zip_name }}'
+          $checksum = "$zip.sha256"
+
+          if (-not (Test-Path -LiteralPath $checksum)) {
+            throw "Canonical checksum file is missing: $checksum"
+          }
+
+          gh release create $env:GITHUB_REF_NAME `
+            $zip `
+            $checksum `
+            --repo $env:GH_REPO `
+            --verify-tag `
+            --generate-notes `
+            --fail-on-no-commits `
+            --title "NppAIAssistant v${{ needs.package-x64.outputs.version }}"
 
       - name: Download published ZIP and verify SHA-256
         shell: pwsh
@@ -257,10 +267,11 @@ jobs:
             throw "Published release asset hash mismatch. Expected $expected; got $actual."
           }
 
+          $releasePage = "https://github.com/${{ github.repository }}/releases/tag/$($env:GITHUB_REF_NAME)"
           @"
           ## Published asset verification
 
-          - Release: ${{ steps.release.outputs.url }}
+          - Release: $releasePage
           - Direct ZIP: $url
           - SHA-256: $actual
           - Result: PASS

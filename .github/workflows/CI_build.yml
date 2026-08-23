@@ -1,10 +1,14 @@
 name: CI_build
 
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
 
 jobs:
   build:
-
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -13,32 +17,43 @@ jobs:
         build_platform: [x64, Win32, ARM64]
 
     steps:
-    - name: Checkout repo
-      uses: actions/checkout@v6
+      - name: Checkout repo
+        uses: actions/checkout@v7
 
-    - name: Add msbuild to PATH
-      uses: microsoft/setup-msbuild@v2
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
 
-    - name: MSBuild of plugin dll
-      working-directory: .\
-      run: msbuild NppAIAssistant.vcxproj /m /p:configuration="${{ matrix.build_configuration }}" /p:platform="${{ matrix.build_platform }}"
+      - name: Build plugin DLL
+        shell: pwsh
+        run: >-
+          msbuild NppAIAssistant.vcxproj
+          /m
+          /p:Configuration="${{ matrix.build_configuration }}"
+          /p:Platform="${{ matrix.build_platform }}"
 
-    - uses: olegtarasov/get-tag@v2.1.4
-      id: tagName
-      
-    - name: zip artifacts for ${{ matrix.build_platform }} Release
-      if: matrix.build_configuration == 'Release'
-      run: 7z a NppAIAssistant_${{ steps.tagName.outputs.tag }}_${{ matrix.build_platform }}.zip .\build\${{ matrix.build_platform }}\${{ matrix.build_configuration }}\plugins\NppAIAssistant\NppAIAssistant.dll
+      - name: Stage Release build artifact
+        if: matrix.build_configuration == 'Release'
+        shell: pwsh
+        run: |
+          $source = ".\build\${{ matrix.build_platform }}\${{ matrix.build_configuration }}\plugins\NppAIAssistant\NppAIAssistant.dll"
+          if (-not (Test-Path -LiteralPath $source)) {
+            throw "Expected DLL was not produced: $source"
+          }
 
-    - name: Archive artifacts for ${{ matrix.build_platform }}
-      if: matrix.build_configuration == 'Release'
-      uses: actions/upload-artifact@v7
-      with:
-          name: NppAIAssistant_${{ steps.tagName.outputs.tag }}_${{ matrix.build_platform }}.zip
-          path: NppAIAssistant_${{ steps.tagName.outputs.tag }}_${{ matrix.build_platform }}.zip
+          $stage = ".\ci-artifact\${{ matrix.build_platform }}"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item -LiteralPath $source -Destination (Join-Path $stage 'NppAIAssistant.dll') -Force
 
-    - name: Create release on tagging
-      uses: softprops/action-gh-release@v2
-      if: startsWith(github.ref, 'refs/tags/')
-      with:
-          files: NppAIAssistant_${{ steps.tagName.outputs.tag }}_${{ matrix.build_platform }}.zip
+      - name: Upload Release build artifact
+        if: matrix.build_configuration == 'Release'
+        uses: actions/upload-artifact@v7
+        with:
+          name: NppAIAssistant-build-${{ github.sha }}-${{ matrix.build_platform }}
+          path: ci-artifact/${{ matrix.build_platform }}/NppAIAssistant.dll
+          if-no-files-found: error
+          retention-days: 14
+
+# Release publication is intentionally not performed here. The governed
+# .github/workflows/release.yml workflow owns canonical packaging, release asset
+# publication, and post-upload SHA-256 verification so that there is only one
+# release-package producer.

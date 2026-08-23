@@ -23,5 +23,6 @@
 
 ## 發佈說明
 
-以上為尚未發行的原始碼變更。若要送交官方 Plugins Admin，仍需先完成 GitHub Release ZIP、
-最終 SHA-256，以及從 ZIP 套件安裝到 Notepad++ 的人工驗收。
+以上為尚未發行的原始碼變更。NppAIAssistant 已有 0.1.0.0 的 x64 Plugins Admin 項目；若要
+提交更新，仍需先提高 DLL 版本、完成 GitHub Release ZIP 與最終 SHA-256，並從 ZIP 套件安裝到
+Notepad++ 進行人工驗收。

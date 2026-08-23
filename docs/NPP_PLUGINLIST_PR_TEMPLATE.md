@@ -6,14 +6,14 @@ pending.
 
 ## Suggested PR Title
 
-Add NppAIAssistant x64 plugin entry (draft)
+Update NppAIAssistant x64 plugin entry (draft)
 
 ## Suggested PR Body
 
 ### Summary
 
-This PR proposes the `NppAIAssistant` plugin for the Notepad++ Plugins Admin
-list for `x64`. The final entry uses the uploaded ZIP's SHA-256 and direct
+This PR updates the existing `NppAIAssistant` entry in the Notepad++ Plugins
+Admin list for `x64`. The final entry uses the uploaded ZIP's SHA-256 and direct
 download URL.
 
 ### Plugin Overview

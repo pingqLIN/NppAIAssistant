@@ -92,10 +92,11 @@ Before a public release, verify the packaged ZIP in Notepad++, including the
 settings dialog, context-menu gesture, local-endpoint rejection, model selection,
 and unload behaviour.
 
-NppAIAssistant is not represented here as available through Plugins Admin. An
-official `nppPluginList` submission requires a final GitHub Release ZIP at a
-direct HTTPS URL, its final SHA-256, an architecture-specific entry, and the
-upstream maintainers' review.
+NppAIAssistant already has an x64 Plugins Admin entry for version `0.1.0.0`.
+This branch's source changes are not an update to that published package. A
+future update still requires a new DLL version, a final GitHub Release ZIP at a
+direct HTTPS URL, its final SHA-256, an updated architecture-specific entry,
+and the upstream maintainers' review.
 
 ## Contributing and license
 

@@ -78,9 +78,9 @@ API Key 會以 Windows DPAPI 保護並存放在本機應用程式資料夾。提
 程式建置與靜態檢查不能取代 Notepad++ 的實機驗收。公開發佈前，仍應從 ZIP 套件安裝測試，
 確認設定視窗、右鍵手勢、本機端點拒絕、模型選取與卸載行為。
 
-本 README 不宣稱 NppAIAssistant 已可從 Plugins Admin 安裝。正式送交 `nppPluginList` 前，
-必須先有 GitHub Release 的直接 HTTPS ZIP 連結、該檔案的最終 SHA-256、對應架構的 JSON 項目，
-以及上游維護者的審查。
+NppAIAssistant 已有對應 0.1.0.0 版本的 x64 Plugins Admin 項目；本分支的原始碼變更並不是該
+已發佈套件的更新。未來若要更新，仍須先提高 DLL 版本、建立 GitHub Release 的直接 HTTPS ZIP
+連結、取得該檔案的最終 SHA-256、更新對應架構的 JSON 項目，並經過上游維護者審查。
 
 ## 參與與授權
 

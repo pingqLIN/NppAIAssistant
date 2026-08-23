@@ -28,6 +28,7 @@
 
 ## Release note status
 
-These are unreleased source changes. A GitHub Release ZIP, final SHA-256, and
-manual Notepad++ package acceptance are still required before an official
-Plugins Admin submission.
+These are unreleased source changes. NppAIAssistant already has an x64 Plugins
+Admin entry for version 0.1.0.0. A new DLL version, GitHub Release ZIP, final
+SHA-256, and manual Notepad++ package acceptance are still required before an
+official update submission.

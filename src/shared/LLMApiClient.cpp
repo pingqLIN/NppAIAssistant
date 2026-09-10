@@ -17,11 +17,14 @@
 #include "LLMApiClient.h"
 #include "HttpClient.h"
 #include <algorithm>
+#include <cwctype>
 #include <regex>
 #include <sstream>
 
 namespace {
 const wchar_t *kGitHubUserAgent = L"Notepad++ AI Assistant/1.0";
+constexpr DWORD kLoopbackDiscoveryTimeoutMs = 1500;
+constexpr DWORD kLoopbackGenerationTimeoutMs = 900 * 1000;
 
 wchar_t hexToValue(wchar_t ch) {
   if (ch >= L'0' && ch <= L'9')
@@ -100,9 +103,103 @@ std::wstring redactValue(const std::wstring &body, const std::wstring &value) {
   return result;
 }
 
+std::wstring sanitizeUntrustedProviderError(const std::wstring &message,
+                                            const std::wstring &knownApiKey) {
+  // Redact before bounding so a credential that crosses the display limit
+  // cannot survive as a partial secret after truncation.
+  std::wstring sanitized = redactValue(message, knownApiKey);
+  sanitized = std::regex_replace(
+      sanitized,
+      std::wregex(
+          LR"((?:sk[-_]|hf_|gh[pousr]_|github_pat_)[A-Za-z0-9_-]{8,}|Bearer\s+[A-Za-z0-9._-]{8,})"),
+      L"<redacted>");
+  if (sanitized.size() > 1024) sanitized.resize(1024);
+  for (wchar_t &ch : sanitized) {
+    if (ch < 0x20 && ch != L'\n' && ch != L'\r' && ch != L'\t') ch = L' ';
+  }
+  return sanitized;
+}
+
 bool startsWith(const std::wstring &value, const std::wstring &prefix) {
   return value.size() >= prefix.size() &&
          value.compare(0, prefix.size(), prefix) == 0;
+}
+
+std::wstring compatibleEndpoint(const std::wstring &baseUrl,
+                                const wchar_t *endpoint) {
+  std::wstring base = baseUrl;
+  while (!base.empty() && base.back() == L'/') base.pop_back();
+  return base + endpoint;
+}
+
+bool isUsableCompatibleModel(const std::wstring &model) {
+  std::wstring lower = model;
+  std::transform(lower.begin(), lower.end(), lower.begin(),
+                 [](wchar_t ch) { return static_cast<wchar_t>(towlower(ch)); });
+  return lower.find(L"embedding") == std::wstring::npos &&
+         lower.find(L"mmproj") == std::wstring::npos;
+}
+
+int jsonHexDigit(wchar_t ch) {
+  if (ch >= L'0' && ch <= L'9') return ch - L'0';
+  if (ch >= L'a' && ch <= L'f') return ch - L'a' + 10;
+  if (ch >= L'A' && ch <= L'F') return ch - L'A' + 10;
+  return -1;
+}
+
+bool decodeJsonString(const std::wstring &json, size_t quote,
+                      std::wstring &value, size_t &next, size_t maxChars) {
+  value.clear();
+  if (quote >= json.size() || json[quote] != L'"') return false;
+  for (size_t i = quote + 1; i < json.size(); ++i) {
+    wchar_t ch = json[i];
+    if (ch == L'"') { next = i + 1; return true; }
+    if (ch < 0x20 || value.size() >= maxChars) return false;
+    if (ch != L'\\') { value.push_back(ch); continue; }
+    if (++i >= json.size()) return false;
+    switch (json[i]) {
+    case L'"': value.push_back(L'"'); break;
+    case L'\\': value.push_back(L'\\'); break;
+    case L'/': value.push_back(L'/'); break;
+    case L'b': value.push_back(L'\b'); break;
+    case L'f': value.push_back(L'\f'); break;
+    case L'n': value.push_back(L'\n'); break;
+    case L'r': value.push_back(L'\r'); break;
+    case L't': value.push_back(L'\t'); break;
+    case L'u': {
+      if (i + 4 >= json.size()) return false;
+      unsigned int codeUnit = 0;
+      for (size_t digit = 1; digit <= 4; ++digit) {
+        const int valueDigit = jsonHexDigit(json[i + digit]);
+        if (valueDigit < 0) return false;
+        codeUnit = (codeUnit << 4) | static_cast<unsigned int>(valueDigit);
+      }
+      value.push_back(static_cast<wchar_t>(codeUnit));
+      i += 4;
+      break;
+    }
+    default: return false;
+    }
+  }
+  return false;
+}
+
+std::vector<std::wstring> extractBoundedJsonStringFields(
+    const std::wstring &json, const wchar_t *key, size_t limit) {
+  std::vector<std::wstring> values;
+  const std::wstring marker = L"\"" + std::wstring(key) + L"\"";
+  size_t pos = 0;
+  while (values.size() < limit && (pos = json.find(marker, pos)) != std::wstring::npos) {
+    size_t colon = json.find(L':', pos + marker.size());
+    if (colon == std::wstring::npos) break;
+    size_t quote = json.find(L'"', colon + 1);
+    if (quote == std::wstring::npos) break;
+    std::wstring value;
+    size_t next = quote;
+    if (decodeJsonString(json, quote, value, next, 512)) values.push_back(value);
+    pos = next;
+  }
+  return values;
 }
 
 void addUniqueModel(std::vector<std::wstring> &models, const std::wstring &model) {
@@ -121,6 +218,57 @@ bool isLikelyOpenAIChatModel(const std::wstring &model) {
          startsWith(model, L"o4");
 }
 
+bool appendStructuredOutputFormat(const StructuredOutputConfig &config,
+                                  CompatibleApiMode mode,
+                                  std::wstring &requestBody,
+                                  std::wstring &error) {
+  const StructuredOutputFormatResult format = buildStructuredOutputFormat(
+      config, mode == CompatibleApiMode::Responses
+                  ? StructuredOutputTransport::Responses
+                  : StructuredOutputTransport::ChatCompletions);
+  if (!format.success) {
+    error = format.errorMessage;
+    return false;
+  }
+  requestBody += format.jsonMember;
+  return true;
+}
+
+void applyEnvelopeResult(LLMResponse &response,
+                         const ProviderEnvelopeResult &envelope,
+                         const StructuredOutputConfig &structuredOutput,
+                         const std::wstring &knownApiKey) {
+  response.failure = envelope.failure;
+  if (!envelope.success) {
+    response.rawContent =
+        sanitizeUntrustedProviderError(envelope.content, knownApiKey);
+    response.errorMessage =
+        sanitizeUntrustedProviderError(envelope.errorMessage, knownApiKey);
+    return;
+  }
+  const std::wstring safeContent = redactValue(envelope.content, knownApiKey);
+  response.rawContent = safeContent;
+  if (structuredOutput.enabled) {
+    if (!envelope.completionStatusKnown) {
+      response.failure = ResponseFailure::ProviderResponseError;
+      response.errorMessage =
+          L"Structured response did not include a completion status.";
+      return;
+    }
+    const StructuredOutputValidationResult validation =
+        validateStructuredOutputContent(safeContent, structuredOutput);
+    if (!validation.success) {
+      response.failure = validation.failure;
+      response.errorMessage =
+          sanitizeUntrustedProviderError(validation.errorMessage, knownApiKey);
+      return;
+    }
+  }
+  response.success = true;
+  response.failure = ResponseFailure::None;
+  response.content = safeContent;
+}
+
 }
 
 
@@ -135,6 +283,16 @@ void LLMApiClient::setLastCopilotAuthDebug(const std::wstring &value) {
 }
 
 std::wstring LLMApiClient::sanitizeAuthBody(const std::wstring &body) {
+  static const wchar_t *const sensitiveMarkers[] = {
+      L"\"access_token\"", L"\"device_code\"", L"\"user_code\"",
+      L"\"token\"",        L"access_token=",       L"device_code=",
+      L"user_code=",        L"token="};
+  for (const wchar_t *marker : sensitiveMarkers) {
+    if (body.find(marker) != std::wstring::npos) {
+      return L"<redacted authentication response>";
+    }
+  }
+
   std::wstring sanitized = body;
 
   std::wstring accessToken = extractJsonValue(body, L"access_token");
@@ -155,7 +313,7 @@ std::wstring LLMApiClient::sanitizeAuthBody(const std::wstring &body) {
   std::wstring copilotToken = extractJsonValue(body, L"token");
   sanitized = redactValue(sanitized, copilotToken);
 
-  return sanitized;
+  return sanitizeUntrustedProviderError(sanitized, L"");
 }
 
 std::wstring LLMApiClient::buildAuthDebugMessage(const HttpResponse &httpResponse) {
@@ -166,7 +324,7 @@ std::wstring LLMApiClient::buildAuthDebugMessage(const HttpResponse &httpRespons
   if (!httpResponse.body.empty()) {
     message += L"\nbody:\n" + sanitizeAuthBody(httpResponse.body);
   }
-  return message;
+  return sanitizeUntrustedProviderError(message, L"");
 }
 
 std::wstring LLMApiClient::escapeJsonString(const std::wstring &input) {
@@ -238,6 +396,7 @@ std::wstring LLMApiClient::extractJsonValue(const std::wstring &json,
     valueStart++;
     std::wstring value;
     bool escaped = false;
+    bool closed = false;
 
     for (size_t i = valueStart; i < json.length(); ++i) {
       if (escaped) {
@@ -265,11 +424,13 @@ std::wstring LLMApiClient::extractJsonValue(const std::wstring &json,
       } else if (json[i] == L'\\') {
         escaped = true;
       } else if (json[i] == L'"') {
+        closed = true;
         break;
       } else {
         value += json[i];
       }
     }
+    if (!closed) return L"";
     return value;
   }
 
@@ -356,7 +517,8 @@ ModelListResponse LLMApiClient::listOpenAIModels(const std::wstring &apiKey) {
     if (!httpResponse.body.empty()) {
       std::wstring errorMsg = extractJsonValue(httpResponse.body, L"message");
       if (!errorMsg.empty()) {
-        response.errorMessage += L"\n" + errorMsg;
+        response.errorMessage +=
+            L"\n" + sanitizeUntrustedProviderError(errorMsg, apiKey);
       }
     }
     return response;
@@ -400,7 +562,8 @@ ModelListResponse LLMApiClient::listGeminiModels(const std::wstring &apiKey) {
     if (!httpResponse.body.empty()) {
       std::wstring errorMsg = extractJsonValue(httpResponse.body, L"message");
       if (!errorMsg.empty()) {
-        response.errorMessage += L"\n" + errorMsg;
+        response.errorMessage +=
+            L"\n" + sanitizeUntrustedProviderError(errorMsg, apiKey);
       }
     }
     return response;
@@ -457,7 +620,8 @@ ModelListResponse LLMApiClient::listClaudeModels(const std::wstring &apiKey) {
     if (!httpResponse.body.empty()) {
       std::wstring errorMsg = extractJsonValue(httpResponse.body, L"message");
       if (!errorMsg.empty()) {
-        response.errorMessage += L"\n" + errorMsg;
+        response.errorMessage +=
+            L"\n" + sanitizeUntrustedProviderError(errorMsg, apiKey);
       }
     }
     return response;
@@ -480,25 +644,142 @@ ModelListResponse LLMApiClient::listClaudeModels(const std::wstring &apiKey) {
   return response;
 }
 
+bool isKnownClaudePromptCacheModel(const std::wstring &model) {
+  return startsWith(model, L"claude-sonnet-4-") ||
+         startsWith(model, L"claude-opus-4-") ||
+         startsWith(model, L"claude-haiku-4-");
+}
+
+ModelListResponse LLMApiClient::listOpenAICompatibleModels(
+    const std::wstring &baseUrl, const std::wstring &apiKey, bool loopback) {
+  ModelListResponse response;
+  if (baseUrl.empty()) {
+    response.errorMessage = L"Compatible service base URL is not configured";
+    return response;
+  }
+  std::map<std::wstring, std::wstring> headers;
+  if (!apiKey.empty()) headers[L"Authorization"] = L"Bearer " + apiKey;
+  HttpResponse httpResponse = HttpClient::get(
+      compatibleEndpoint(baseUrl, L"/models"), headers,
+      loopback ? kLoopbackDiscoveryTimeoutMs : 0, loopback);
+  if (!httpResponse.success) {
+    response.errorMessage = httpResponse.statusCode == 401
+                                ? L"Service is reachable but requires authentication"
+                                : L"HTTP request failed: " + httpResponse.errorMessage;
+    return response;
+  }
+  for (const std::wstring &model :
+       extractBoundedJsonStringFields(httpResponse.body, L"id", 128)) {
+    const bool safeModelId = !model.empty() && model.size() <= 256 &&
+        std::none_of(model.begin(), model.end(), [](wchar_t ch) {
+          return ch < 0x20 || (ch >= 0x7F && ch <= 0x9F);
+        });
+    if (safeModelId && isUsableCompatibleModel(model)) addUniqueModel(response.models, model);
+  }
+  if (response.models.empty()) {
+    response.errorMessage = L"Compatible service returned no generation models";
+    return response;
+  }
+  response.success = true;
+  return response;
+}
+
+LLMResponse LLMApiClient::callOpenAICompatible(
+    const std::wstring &baseUrl, const std::wstring &apiKey,
+    const std::wstring &prompt, const std::wstring &model,
+    CompatibleApiMode mode, bool loopback,
+    const StructuredOutputConfig &structuredOutput) {
+  LLMResponse response;
+  if (baseUrl.empty() || model.empty()) {
+    response.errorMessage = L"Compatible service URL or model is missing";
+    response.failure = ResponseFailure::ProviderResponseError;
+    return response;
+  }
+  const std::wstring escapedPrompt = escapeJsonString(prompt);
+  std::wstring requestBody;
+  const wchar_t *endpoint = L"/chat/completions";
+  if (mode == CompatibleApiMode::Responses) {
+    endpoint = L"/responses";
+    requestBody = L"{\"model\":\"" + escapeJsonString(model) +
+                   L"\",\"input\":\"" + escapedPrompt +
+                   L"\",\"store\":false,\"stream\":false";
+  } else {
+    requestBody = L"{\"model\":\"" + escapeJsonString(model) +
+                   L"\",\"messages\":[{\"role\":\"user\",\"content\":\"" +
+                   escapedPrompt + L"\"}],\"stream\":false";
+  }
+  if (!appendStructuredOutputFormat(structuredOutput, mode, requestBody,
+                                    response.errorMessage)) {
+    response.failure = ResponseFailure::SchemaValidationError;
+    return response;
+  }
+  requestBody += L"}";
+  std::map<std::wstring, std::wstring> headers;
+  headers[L"Content-Type"] = L"application/json";
+  if (!apiKey.empty()) headers[L"Authorization"] = L"Bearer " + apiKey;
+  HttpResponse httpResponse = HttpClient::post(
+      compatibleEndpoint(baseUrl, endpoint), requestBody, headers,
+      loopback ? kLoopbackGenerationTimeoutMs : 0, loopback);
+  if (!httpResponse.success) {
+    if (httpResponse.statusCode == 401) {
+      response.errorMessage = L"Compatible service rejected authentication (HTTP 401).";
+    } else {
+      response.errorMessage = L"Compatible service request failed.";
+      if (httpResponse.statusCode != 0) {
+        response.errorMessage += L" HTTP " + std::to_wstring(httpResponse.statusCode) + L".";
+      }
+      if (httpResponse.statusCode == 400 || httpResponse.statusCode == 422) {
+        response.errorMessage += L" Check the selected model, API mode and output schema; consult the service log for details.";
+      } else if (httpResponse.statusCode == 404) {
+        response.errorMessage += L" Check the Base URL and whether this service supports the selected API mode.";
+      } else if (httpResponse.statusCode >= 500) {
+        response.errorMessage += L" The service reported a server error; check its model loading and inference log.";
+      }
+      if (!httpResponse.errorMessage.empty()) {
+        response.errorMessage += L" " + sanitizeUntrustedProviderError(
+                                            httpResponse.errorMessage, apiKey);
+      }
+    }
+    response.failure = ResponseFailure::HttpError;
+    return response;
+  }
+  const ProviderEnvelopeResult envelope =
+      mode == CompatibleApiMode::Responses
+          ? extractResponsesEnvelope(httpResponse.body)
+          : extractChatCompletionEnvelope(httpResponse.body);
+  applyEnvelopeResult(response, envelope, structuredOutput, apiKey);
+  return response;
+}
+
 LLMResponse LLMApiClient::callOpenAI(const std::wstring &apiKey,
                                      const std::wstring &prompt,
-                                     const std::wstring &model) {
+                                     const std::wstring &model,
+                                     const StructuredOutputConfig &structuredOutput) {
   LLMResponse response;
 
   if (apiKey.empty()) {
     response.errorMessage = L"OpenAI API key is not configured";
+    response.failure = ResponseFailure::ProviderResponseError;
     return response;
   }
 
   // Build request body
   std::wstring escapedPrompt = escapeJsonString(prompt);
   std::wstring requestBody =
-      L"{\"model\":\"" + model +
+      L"{\"model\":\"" + escapeJsonString(model) +
       L"\","
       L"\"messages\":[{\"role\":\"user\",\"content\":\"" +
       escapedPrompt +
       L"\"}],"
-      L"\"max_tokens\":2048}";
+      L"\"stream\":false,"
+      L"\"max_tokens\":2048";
+  if (!appendStructuredOutputFormat(structuredOutput,
+                                    CompatibleApiMode::ChatCompletions,
+                                    requestBody, response.errorMessage)) {
+    response.failure = ResponseFailure::SchemaValidationError;
+    return response;
+  }
+  requestBody += L"}";
 
   // Set headers
   std::map<std::wstring, std::wstring> headers;
@@ -516,26 +797,15 @@ LLMResponse LLMApiClient::callOpenAI(const std::wstring &apiKey,
       // Try to extract error message from response
       std::wstring errorMsg = extractJsonValue(httpResponse.body, L"message");
       if (!errorMsg.empty())
-        response.errorMessage += L"\n" + errorMsg;
+        response.errorMessage += L"\n" +
+                                 sanitizeUntrustedProviderError(errorMsg, apiKey);
     }
+    response.failure = ResponseFailure::HttpError;
     return response;
   }
 
-  // Parse response - extract content from choices[0].message.content
-  // First find the choices array
-  size_t choicesPos = httpResponse.body.find(L"\"choices\"");
-  if (choicesPos != std::wstring::npos) {
-    // Find the content field within the message
-    std::wstring content = extractJsonValue(httpResponse.body, L"content");
-    if (!content.empty()) {
-      response.success = true;
-      response.content = content;
-    }
-  }
-
-  if (!response.success) {
-    response.errorMessage = L"Failed to parse OpenAI response";
-  }
+  applyEnvelopeResult(response, extractChatCompletionEnvelope(httpResponse.body),
+                      structuredOutput, apiKey);
 
   return response;
 }
@@ -573,26 +843,23 @@ LLMResponse LLMApiClient::callGemini(const std::wstring &apiKey,
     if (!httpResponse.body.empty()) {
       std::wstring errorMsg = extractJsonValue(httpResponse.body, L"message");
       if (!errorMsg.empty())
-        response.errorMessage += L"\n" + errorMsg;
+        response.errorMessage +=
+            L"\n" + sanitizeUntrustedProviderError(errorMsg, apiKey);
     }
+    response.failure = ResponseFailure::HttpError;
     return response;
   }
 
-  // Parse response - extract text from candidates[0].content.parts[0].text
-  std::wstring text = extractJsonValue(httpResponse.body, L"text");
-  if (!text.empty()) {
-    response.success = true;
-    response.content = text;
-  } else {
-    response.errorMessage = L"Failed to parse Gemini response";
-  }
+  applyEnvelopeResult(response, extractGeminiEnvelope(httpResponse.body), {},
+                      apiKey);
 
   return response;
 }
 
 LLMResponse LLMApiClient::callClaude(const std::wstring &apiKey,
                                      const std::wstring &prompt,
-                                     const std::wstring &model) {
+                                     const std::wstring &model,
+                                     const std::wstring &cacheStablePrefix) {
   LLMResponse response;
 
   if (apiKey.empty()) {
@@ -602,12 +869,24 @@ LLMResponse LLMApiClient::callClaude(const std::wstring &apiKey,
 
   // Build request body
   std::wstring escapedPrompt = escapeJsonString(prompt);
+  std::wstring content;
+  if (isKnownClaudePromptCacheModel(model) && !cacheStablePrefix.empty() &&
+      prompt.rfind(cacheStablePrefix, 0) == 0) {
+    const std::wstring dynamicSuffix = prompt.substr(cacheStablePrefix.size());
+    content = L"[{\"type\":\"text\",\"text\":\"" +
+              escapeJsonString(cacheStablePrefix) +
+              L"\",\"cache_control\":{\"type\":\"ephemeral\"}},"
+              L"{\"type\":\"text\",\"text\":\"" +
+              escapeJsonString(dynamicSuffix) + L"\"}]";
+  } else {
+    content = L"\"" + escapedPrompt + L"\"";
+  }
   std::wstring requestBody =
       L"{\"model\":\"" + model +
       L"\","
       L"\"max_tokens\":2048,"
-      L"\"messages\":[{\"role\":\"user\",\"content\":\"" +
-      escapedPrompt + L"\"}]}";
+      L"\"messages\":[{\"role\":\"user\",\"content\":" +
+      content + L"}]}";
 
   // Set headers
   std::map<std::wstring, std::wstring> headers;
@@ -625,129 +904,16 @@ LLMResponse LLMApiClient::callClaude(const std::wstring &apiKey,
     if (!httpResponse.body.empty()) {
       std::wstring errorMsg = extractJsonValue(httpResponse.body, L"message");
       if (!errorMsg.empty())
-        response.errorMessage += L"\n" + errorMsg;
+        response.errorMessage +=
+            L"\n" + sanitizeUntrustedProviderError(errorMsg, apiKey);
     }
+    response.failure = ResponseFailure::HttpError;
     return response;
   }
 
-  // Parse response - extract text from content[0].text
-  std::wstring text = extractJsonValue(httpResponse.body, L"text");
-  if (!text.empty()) {
-    response.success = true;
-    response.content = text;
-  } else {
-    response.errorMessage = L"Failed to parse Claude response";
-  }
+  applyEnvelopeResult(response, extractClaudeEnvelope(httpResponse.body), {},
+                      apiKey);
 
-  return response;
-}
-
-LLMResponse LLMApiClient::callOpenRouter(const std::wstring &apiKey,
-                                         const std::wstring &prompt,
-                                         const std::wstring &model) {
-  LLMResponse response;
-
-  if (apiKey.empty()) {
-    response.errorMessage = L"OpenRouter API key is not configured";
-    return response;
-  }
-
-  // Build request body
-  std::wstring escapedPrompt = escapeJsonString(prompt);
-  std::wstring requestBody =
-      L"{\"model\":\"" + model +
-      L"\","
-      L"\"messages\":[{\"role\":\"user\",\"content\":\"" +
-      escapedPrompt +
-      L"\"}],"
-      L"\"max_tokens\":2048}";
-
-  // Set headers
-  std::map<std::wstring, std::wstring> headers;
-  headers[L"Content-Type"] = L"application/json";
-  headers[L"Authorization"] = L"Bearer " + apiKey;
-  headers[L"HTTP-Referer"] = L"https://github.com/npp-ai-assistant";
-  headers[L"X-Title"] = L"NppAIAssistant";
-
-  // Make request
-  HttpResponse httpResponse = HttpClient::post(
-      L"https://openrouter.ai/api/v1/chat/completions", requestBody, headers);
-
-  if (!httpResponse.success) {
-    response.errorMessage =
-        L"HTTP request failed: " + httpResponse.errorMessage;
-    if (!httpResponse.body.empty()) {
-      std::wstring errorMsg = extractJsonValue(httpResponse.body, L"message");
-      if (!errorMsg.empty())
-        response.errorMessage += L"\n" + errorMsg;
-    }
-    return response;
-  }
-
-  // Parse response - extract content from choices[0].message.content
-  size_t choicesPos = httpResponse.body.find(L"\"choices\"");
-  if (choicesPos != std::wstring::npos) {
-    std::wstring content = extractJsonValue(httpResponse.body, L"content");
-    if (!content.empty()) {
-      response.success = true;
-      response.content = content;
-    }
-  }
-
-  if (!response.success) {
-    response.errorMessage = L"Failed to parse OpenRouter response";
-  }
-
-  return response;
-}
-
-ModelListResponse LLMApiClient::listOpenRouterModels(const std::wstring &apiKey) {
-  ModelListResponse response;
-
-  if (apiKey.empty()) {
-    response.errorMessage = L"OpenRouter API key is not configured";
-    return response;
-  }
-
-  std::map<std::wstring, std::wstring> headers;
-  headers[L"Authorization"] = L"Bearer " + apiKey;
-
-  HttpResponse httpResponse = HttpClient::get(L"https://openrouter.ai/api/v1/models", headers);
-  if (!httpResponse.success) {
-    response.errorMessage = L"HTTP request failed: " + httpResponse.errorMessage;
-    if (!httpResponse.body.empty()) {
-      std::wstring errorMsg = extractJsonValue(httpResponse.body, L"message");
-      if (!errorMsg.empty()) {
-        response.errorMessage += L"\n" + errorMsg;
-      }
-    }
-    return response;
-  }
-
-  // OpenRouter returns models in "data" array with "id" field
-  std::wregex idPattern(L"\"id\"\\s*:\\s*\"([^\"]+)\"");
-  for (std::wsregex_iterator it(httpResponse.body.begin(), httpResponse.body.end(),
-                                idPattern),
-       end;
-       it != end; ++it) {
-    const std::wstring model = (*it)[1].str();
-    // Filter to include only chat-capable models (exclude embedding, moderation, etc.)
-    if (model.find(L"embedding") == std::wstring::npos &&
-        model.find(L"moderation") == std::wstring::npos &&
-        model.find(L"tts") == std::wstring::npos &&
-        model.find(L"whisper") == std::wstring::npos &&
-        model.find(L"dall-e") == std::wstring::npos &&
-        model.find(L"stable-diffusion") == std::wstring::npos) {
-      addUniqueModel(response.models, model);
-    }
-  }
-
-  if (response.models.empty()) {
-    response.errorMessage = L"OpenRouter returned no chat models";
-    return response;
-  }
-
-  response.success = true;
   return response;
 }
 
@@ -929,23 +1095,15 @@ LLMResponse LLMApiClient::callCopilot(CopilotTokens &tokens,
     if (!httpResponse.body.empty()) {
       std::wstring errorMsg = extractJsonValue(httpResponse.body, L"message");
       if (!errorMsg.empty())
-        response.errorMessage += L"\n" + errorMsg;
+        response.errorMessage += L"\n" +
+            sanitizeUntrustedProviderError(errorMsg, tokens.copilotToken);
     }
+    response.failure = ResponseFailure::HttpError;
     return response;
   }
   
-  size_t choicesPos = httpResponse.body.find(L"\"choices\"");
-  if (choicesPos != std::wstring::npos) {
-    std::wstring content = extractJsonValue(httpResponse.body, L"content");
-    if (!content.empty()) {
-      response.success = true;
-      response.content = content;
-    }
-  }
-  
-  if (!response.success) {
-    response.errorMessage = L"Failed to parse Copilot response";
-  }
+  applyEnvelopeResult(response, extractChatCompletionEnvelope(httpResponse.body),
+                      {}, tokens.copilotToken);
   
   return response;
 }

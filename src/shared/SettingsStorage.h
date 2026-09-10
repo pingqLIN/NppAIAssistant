@@ -26,6 +26,11 @@ public:
   static int loadSchemaVersion();
   static bool saveSchemaVersion(int version);
 
+  // Aggregates write results for one caller-owned settings batch. This keeps a
+  // migration from treating a partial INI write as a successful persistence.
+  static void beginWriteBatch();
+  static bool endWriteBatch();
+
   static std::wstring loadString(const std::wstring &keyName);
   static bool saveString(const std::wstring &keyName, const std::wstring &value);
 

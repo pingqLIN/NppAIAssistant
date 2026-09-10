@@ -21,13 +21,20 @@
 #include <string>
 #include <vector>
 
+#include "StructuredOutput.h"
+
 struct HttpResponse;
+
+enum class CompatibleApiMode { ChatCompletions = 0, Responses = 1 };
 
 
 struct LLMResponse {
   bool success = false;
   std::wstring content;
+  // Extracted model content is retained when JSON/schema validation fails.
+  std::wstring rawContent;
   std::wstring errorMessage;
+  ResponseFailure failure = ResponseFailure::ProviderResponseError;
   int tokensUsed = 0;
 };
 
@@ -56,7 +63,8 @@ class LLMApiClient {
 public:
   static LLMResponse callOpenAI(const std::wstring &apiKey,
                                 const std::wstring &prompt,
-                                const std::wstring &model = L"gpt-4o-mini");
+                                const std::wstring &model = L"gpt-4o-mini",
+                                const StructuredOutputConfig &structuredOutput = {});
 
   static LLMResponse callGemini(const std::wstring &apiKey,
                                 const std::wstring &prompt,
@@ -64,19 +72,23 @@ public:
 
   static LLMResponse
   callClaude(const std::wstring &apiKey, const std::wstring &prompt,
-             const std::wstring &model = L"claude-sonnet-4-20250514");
+             const std::wstring &model = L"claude-sonnet-4-20250514",
+             const std::wstring &cacheStablePrefix = L"");
 
-  static LLMResponse callOpenRouter(const std::wstring &apiKey,
-                                    const std::wstring &prompt,
-                                    const std::wstring &model = L"meta-llama/llama-3.1-8b-instruct:free");
+  static LLMResponse callOpenAICompatible(
+      const std::wstring &baseUrl, const std::wstring &apiKey,
+      const std::wstring &prompt, const std::wstring &model,
+      CompatibleApiMode mode, bool loopback = false,
+      const StructuredOutputConfig &structuredOutput = {});
 
   static ModelListResponse listOpenAIModels(const std::wstring &apiKey);
 
   static ModelListResponse listGeminiModels(const std::wstring &apiKey);
 
   static ModelListResponse listClaudeModels(const std::wstring &apiKey);
-
-  static ModelListResponse listOpenRouterModels(const std::wstring &apiKey);
+  static ModelListResponse listOpenAICompatibleModels(
+      const std::wstring &baseUrl, const std::wstring &apiKey,
+      bool loopback = false);
 
   static CopilotDeviceCode initiateCopilotDeviceFlow();
   

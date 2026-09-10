@@ -1,156 +1,97 @@
 <p align="center">
-  <strong>NppAIAssistant</strong><br>
-  A lightweight AI assistant plugin for Notepad++
+  <img src="docs/assets/readme/nppaiassistant-banner.png" alt="An original fox editing companion presenting blank document cards" width="100%">
 </p>
 
-<p align="center">
-  <a href="https://github.com/pingqLIN/NppAIAssistant/releases/tag/v0.1.0"><img src="https://img.shields.io/github/v/release/pingqLIN/NppAIAssistant?label=release" alt="Release"></a>
-  <a href="https://github.com/pingqLIN/NppAIAssistant/releases"><img src="https://img.shields.io/github/downloads/pingqLIN/NppAIAssistant/total" alt="Downloads"></a>
-  <a href="https://notepad-plus-plus.org/"><img src="https://img.shields.io/badge/platform-Windows-0078D6" alt="Platform"></a>
-  <a href="https://notepad-plus-plus.org/"><img src="https://img.shields.io/badge/Notepad++-Plugin-90E59A" alt="Notepad++"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="License"></a>
-  <a href="https://github.com/notepad-plus-plus/nppPluginList/pull/1051"><img src="https://img.shields.io/badge/Plugins%20Admin-PR%20submitted-success" alt="Plugins Admin PR"></a>
-</p>
+# NppAIAssistant
 
-<p align="center">
-  <a href="README_zh-TW.md">繁體中文</a>
-</p>
+**AI assistance beside your text. Visible prompts. Deliberate edits.**
 
----
+A native Notepad++ plugin for explaining code, rewriting text, and turning a request into a useful draft—using a cloud provider or a local model.
 
-Visible prompts, modular single-turn profiles, and no hidden memory between requests.
+[繁體中文](README_zh-TW.md) · [Download](https://github.com/pingqLIN/NppAIAssistant/releases/latest) · [Report an issue](https://github.com/pingqLIN/NppAIAssistant/issues) · [GPL-3.0](LICENSE)
 
-This repository is focused on the plugin itself. It does not carry the full Notepad++ source history, which keeps the project easier to publish, review, package, and release.
+> **Version guide:** the published x64 release and official Plugin List entry are **0.1.0.0** (`v0.1.0`). The workspace tour below shows the **0.2.0.6 candidate**, which is not yet a published download. These new screenshots show actual native dialogs with sample content in an isolated UI preview; they do not demonstrate a live model response or a full Notepad++ host test.
 
-## Table of Contents
+## From a question to an edit
 
-- [Why It Stands Out](#why-it-stands-out)
-- [Security and Settings Storage](#security-and-settings-storage)
-- [Screenshots](#screenshots)
-- [Build](#build)
-- [Install](#install)
-- [Repository Layout](#repository-layout)
-- [Release and Plugins Admin](#release-and-plugins-admin)
+1. **Choose a service and model.** Use your preferred cloud API or a local LM Studio endpoint.
+2. **Shape the request.** Select a task preset and output format, then inspect the prompt before sending.
+3. **Read the result.** Switch between a basic formatted preview and the original response.
+4. **Choose where it goes.** Keep the answer in the panel, insert at the cursor, replace the selection, or create a new document.
 
-## Why It Stands Out
+## Meet the workspace · 0.2.0.6 preview
 
-| Feature | Description |
-|---------|-------------|
-| **Lightweight** | Ships as a standard Notepad++ plugin with no core fork |
-| **Prompt visibility** | Live preview of the exact prompt structure in settings |
-| **No hidden memory** | Single-turn conversations with no cross-request context |
-| **Dynamic models** | Model list loads after provider login or API key setup |
-| **Safer secret storage** | Provider secrets now live in local DPAPI storage with legacy migration |
-| **Context menu** | Practical right-click actions for editing workflows |
-| **Bilingual UI** | English and Traditional Chinese support |
+### Keep the request, response, and destination together
 
-## Security and Settings Storage
+<img src="docs/assets/screenshots/workspace-0.2.0.6-zh-tw.png" alt="Traditional Chinese native workspace preview showing provider controls, a sample Markdown response, output destination and input box" width="680">
 
-- API keys and OAuth tokens are stored in `%LocalAppData%\Notepad++\AIAssistant`.
-- Secret values are protected with Windows DPAPI.
-- Non-secret preferences are stored separately in `%AppData%\Notepad++\plugins\config\NppAIAssistant.ini`.
-- Legacy roaming secure blobs are migrated automatically on first launch of the updated build.
-- Gemini requests now authenticate with the `x-goog-api-key` header instead of query-string API keys.
+The upper controls select the provider, model, task profile, and output format. The response occupies the center; the destination and input remain below it. Resize the panel, drag the input divider, or use **A+ / A−** to make the text comfortable to read.
 
-## Screenshots
+| Control | What it helps you do |
+| --- | --- |
+| Preview before send | Check the assembled prompt before it reaches the selected provider. |
+| Formatted / original view | Read basic Markdown or indented JSON while retaining the original response. |
+| Output destination | Explicitly choose panel, cursor, selection, or new document. |
+| Reply selection | Choose which assistant reply to insert. |
+| New / branch conversation | Organize local transcripts. Conversation branches do not automatically become model context. |
 
-### Settings dialog
+### Configure the connection separately from the task
 
-<table>
-<tr>
-<td align="center"><strong>Prompt preview</strong><br><sub>See the exact prompt being built as you adjust presets and output rules</sub></td>
-<td align="center"><strong>Preset-driven prompt builder</strong><br><sub>Switch presets to quickly configure scenario modules and parameters</sub></td>
-</tr>
-<tr>
-<td><img src="docs/assets/screenshots/settings-prompt-preview.png" alt="Prompt Preview" width="380"></td>
-<td><img src="docs/assets/screenshots/settings-preset-dropdown.png" alt="Preset Dropdown" width="380"></td>
-</tr>
-</table>
+<img src="docs/assets/screenshots/settings-0.2.0.6-zh-tw.png" alt="Native settings dialog with empty API key fields and local provider settings" width="680">
 
-### Context menu actions
+The settings separate provider connections from prompt configuration. LM Studio has its own base URL, API mode, and model selection. Discover available models, then explicitly choose a default model. API keys in this screenshot are empty. Model discovery is unavailable in this network-disabled screenshot fixture.
 
-Trigger explanation, refactoring, comments, and fixes directly from the editor.
+### Know what you are sending
 
-<p align="center">
-  <img src="docs/assets/screenshots/context-menu-actions.png" alt="Context Menu Actions" width="420">
-</p>
+<img src="docs/assets/screenshots/prompt-0.2.0.6-zh-tw.png" alt="Native prompt settings showing task presets, output rules and prompt preview" width="680">
 
-## Build
+Prompt configuration brings task presets, response language, output rules, and the assembled preview into one place. Built-in template sections are locked by default and require an explicit unlock to edit. Optional visible Memory is disabled by default; it is ordinary local text, so keep secrets out of it.
 
-<details>
-<summary><strong>Visual Studio / MSBuild</strong></summary>
+## Providers and output
+
+The candidate implements OpenAI, Gemini, Claude, LM Studio, and a generic OpenAI-compatible profile. Availability, model access, and usage charges depend on the selected provider. Copilot is currently paused.
+
+| Output mode | Behavior in the candidate |
+| --- | --- |
+| Text | Plain response for general editing and drafting. |
+| Markdown | Basic headings, emphasis, code, lists, and quotes in the panel. HTML, images, links, and tables are not rendered. |
+| JSON | Asks for JSON; this alone is not schema enforcement. |
+| Structured JSON | Uses native schema transport and local validation for supported OpenAI and LM Studio Chat Completions models. Unsupported routes are blocked. |
+
+Requests are non-streaming: the status strip reports request phases, and the answer appears after the response arrives. In **0.2.0.6**, local loopback generation uses a **900-second timeout for the relevant HTTP phases**; this is not a 900-second total request deadline. Model discovery uses a separate short timeout.
+
+English and Traditional Chinese are supported. Japanese and Spanish cover the main workspace, with English fallback in advanced settings.
+
+## Install the published release
+
+Use **Plugins → Plugins Admin**, search for **NppAIAssistant**, and install the entry offered by your Notepad++ Plugin List. List updates may reach installations at different times.
+
+For manual installation on **x64 Notepad++**:
+
+1. Download `NppAIAssistant-0.1.0.0-x64.zip` from the [v0.1.0 release](https://github.com/pingqLIN/NppAIAssistant/releases/tag/v0.1.0).
+2. Close Notepad++ and back up any existing plugin DLL.
+3. Extract `NppAIAssistant.dll` to `<Notepad++>\plugins\NppAIAssistant\NppAIAssistant.dll`.
+4. Restart Notepad++ and open its **Plugins → NppAIAssistant** menu.
+
+The candidate screenshots above will differ from the published version. Match the plugin architecture to your editor; this page does not offer x86 or ARM64 release downloads.
+
+## Privacy and editing behavior
+
+- A request sends its assembled prompt and included text to the endpoint you choose. A local endpoint keeps that request local only if the configured service itself runs locally.
+- The candidate protects stored API credentials with Windows DPAPI under `%LocalAppData%\Notepad++\AIAssistant`. Preferences and visible prompt text live under `%AppData%\Notepad++\plugins\config\NppAIAssistant.ini`.
+- A portable Notepad++ folder does **not** isolate those production settings paths.
+- Editor writes are guarded against changed documents, read-only buffers, and lossy encoding conversion. Review generated text before applying it; supported writes are grouped for undo.
+- Requests are single-turn by default. A visible transcript does not mean previous replies are automatically sent again.
+
+## Build and contribute
+
+Use Windows, Visual Studio with the C++ workload and Windows SDK, and CMake 3.21 or newer. From a source checkout:
 
 ```powershell
-& "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe" `
-    "NppAIAssistant.vcxproj" /p:Configuration=Release /p:Platform=x64 /m
-```
-
-</details>
-
-<details>
-<summary><strong>CMake</strong></summary>
-
-```powershell
-cmake -S . -B build
+cmake -S . -B build -A x64
 cmake --build build --config Release
 ```
 
-</details>
+Build output paths depend on the checked-out revision and generator. Use the repository packaging scripts when preparing a distributable ZIP. For bug reports, include plugin and Notepad++ versions, architecture, provider/API mode, and a minimal reproducible example with credentials and private text removed.
 
-Expected output: `build/x64/Release/plugins/NppAIAssistant/NppAIAssistant.dll`
-
-## Install
-
-Copy the built DLL to:
-
-```
-<Notepad++>\plugins\NppAIAssistant\NppAIAssistant.dll
-```
-
-Or run the install script:
-
-```powershell
-scripts/install-npp-ai-plugin.ps1
-```
-
-## Repository Layout
-
-```
-NppAIAssistant/
-├── src/                  # Plugin source, resources, version info
-│   └── shared/           # HTTP, provider API, secure and plain settings storage
-├── vendor/
-│   ├── notepadpp/        # Vendored plugin & docking headers
-│   └── scintilla/include # Scintilla headers for the plugin interface
-├── docs/                 # Usage guides, release notes, submission docs
-└── scripts/              # Install and package helpers
-```
-
-See also:
-
-- [Project Structure](PROJECT_STRUCTURE.md)
-- [Usage Guide](docs/USAGE.md)
-- [Development Log](docs/DEVELOPMENT_LOG.md)
-- [Security Remediation Backlog](docs/SECURITY_REMEDIATION.md)
-- [Security Verification Checklist](docs/SECURITY_VERIFICATION.md)
-- [Plugins Admin Submission Guide](docs/PLUGIN_ADMIN_SUBMISSION.md)
-
-## Release and Plugins Admin
-
-| Item | Path |
-|------|------|
-| Packaging script | `scripts/package-npp-ai-plugin.ps1` |
-| Metadata | `plugin-admin-metadata.json` |
-| Submission guide | [docs/PLUGIN_ADMIN_SUBMISSION.md](docs/PLUGIN_ADMIN_SUBMISSION.md) |
-
-Recommended release config:
-
-- GitHub release tag: `v0.1.0`
-- Plugin version: `0.1.0.0`
-- Release asset: `NppAIAssistant-0.1.0.0-x64.zip`
-
----
-
-<p align="center">
-  <sub>GPL-3.0 · <a href="https://github.com/pingqLIN/NppAIAssistant">GitHub</a></sub>
-</p>
+The [visual design notes](docs/VISUAL_DESIGN.md) explain the original AI-generated banner and screenshot provenance. The banner is project artwork; interface screenshots are captured native controls. This project is developed with AI assistance and distributed under [GPL-3.0](LICENSE).

@@ -32,9 +32,9 @@ constexpr UINT kAiContextRefactor = 2;
 constexpr UINT kAiContextComments = 3;
 constexpr UINT kAiContextFix = 4;
 
-enum class LLMProvider { OpenAI = 0, Gemini, Claude, OpenRouter, Copilot, ProviderCount };
-constexpr std::array<LLMProvider, 4> kEnabledProviders = {
-    LLMProvider::OpenAI, LLMProvider::Gemini, LLMProvider::Claude, LLMProvider::OpenRouter};
+enum class LLMProvider { OpenAI = 0, Gemini, Claude, OpenRouter, Copilot, LocalAI, ProviderCount };
+constexpr std::array<LLMProvider, 5> kEnabledProviders = {
+    LLMProvider::OpenAI, LLMProvider::Gemini, LLMProvider::Claude, LLMProvider::OpenRouter, LLMProvider::LocalAI};
 
 enum class UiLanguage {
   English,
@@ -118,6 +118,9 @@ enum class TextId {
   SettingsTestConnection,
   SettingsOk,
   SettingsCancel,
+  SettingsLocalAIEndpointLabel,
+  SettingsLocalAIKeyLabel,
+  SettingsApiKeysLocalAIHint,
 };
 
 struct ChatMessage {
@@ -146,6 +149,8 @@ struct AIAssistantConfig {
   std::wstring claudeKey;
   std::wstring openRouterKey;
   std::wstring copilotKey;
+  std::wstring localAIEndpoint;
+  std::wstring localAIKey;
   std::wstring customPromptInstructions;
   LLMProvider defaultProvider = LLMProvider::OpenAI;
   UiLanguagePreference uiLanguagePreference = UiLanguagePreference::FollowNotepad;
@@ -194,6 +199,8 @@ const wchar_t *kClaudeKeyName = L"claude_apikey";
 const wchar_t *kOpenRouterKeyName = L"openrouter_apikey";
 const wchar_t *kCopilotKeyName = L"copilot_apikey";
 const wchar_t *kCopilotOauthKeyName = L"copilot_oauth_token";
+const wchar_t *kLocalAIEndpointName = L"local_ai_endpoint";
+const wchar_t *kLocalAIKeyName = L"local_ai_apikey";
 const wchar_t *kDefaultProviderName = L"default_provider";
 const wchar_t *kUiLanguagePreferenceName = L"ui_language_preference";
 const wchar_t *kResponseLanguageName = L"prompt_response_language";
@@ -235,6 +242,8 @@ std::wstring getProviderName(LLMProvider provider) {
     return L"OpenRouter";
   case LLMProvider::Copilot:
     return L"Copilot";
+  case LLMProvider::LocalAI:
+    return L"Local AI";
   default:
     return L"AI";
   }
@@ -348,6 +357,12 @@ const wchar_t *tr(TextId id) {
       return L"Claude: console.anthropic.com - API Keys";
     case TextId::SettingsApiKeysOpenRouterHint:
       return L"OpenRouter: openrouter.ai - Keys";
+    case TextId::SettingsLocalAIEndpointLabel:
+      return L"Local AI Base URL:";
+    case TextId::SettingsLocalAIKeyLabel:
+      return L"Local AI Key (\u9078\u586B):";
+    case TextId::SettingsApiKeysLocalAIHint:
+      return L"Local AI: \u4EFB\u4F55 OpenAI \u76F8\u5BB9\u7AEF\u9EDE";
     case TextId::SettingsTestConnection:
       return L"\u6E2C\u8A66\u9810\u8A2D\u9023\u7DDA";
     case TextId::SettingsOk:
@@ -418,6 +433,12 @@ const wchar_t *tr(TextId id) {
     return L"Claude: console.anthropic.com - API Keys";
   case TextId::SettingsApiKeysOpenRouterHint:
     return L"OpenRouter: openrouter.ai - Keys";
+  case TextId::SettingsLocalAIEndpointLabel:
+    return L"Local AI Base URL:";
+  case TextId::SettingsLocalAIKeyLabel:
+    return L"Local AI Key (optional):";
+  case TextId::SettingsApiKeysLocalAIHint:
+    return L"Local AI: Any OpenAI-compatible endpoint";
   case TextId::SettingsTestConnection:
     return L"Test Default Connection";
   case TextId::SettingsOk:
@@ -1062,6 +1083,8 @@ std::wstring getProviderApiKey(LLMProvider provider) {
     return trimWhitespace(g_config.claudeKey);
   case LLMProvider::OpenRouter:
     return trimWhitespace(g_config.openRouterKey);
+  case LLMProvider::LocalAI:
+    return trimWhitespace(g_config.localAIKey);
   default:
     return L"";
   }
@@ -1272,6 +1295,8 @@ void loadConfig() {
   g_config.claudeKey = SecureStorage::loadApiKey(kClaudeKeyName);
   g_config.openRouterKey = SecureStorage::loadApiKey(kOpenRouterKeyName);
   g_config.copilotKey = SecureStorage::loadApiKey(kCopilotKeyName);
+  g_config.localAIKey = SecureStorage::loadApiKey(kLocalAIKeyName);
+  g_config.localAIEndpoint = SettingsStorage::loadString(kLocalAIEndpointName);
   if (SettingsStorage::loadSchemaVersion() >= kSettingsSchemaVersion) {
     loadPreferencesFromSettings(g_config);
   } else {
@@ -1299,6 +1324,8 @@ void saveConfig(const AIAssistantConfig &config) {
   SecureStorage::saveApiKey(kClaudeKeyName, config.claudeKey);
   SecureStorage::saveApiKey(kOpenRouterKeyName, config.openRouterKey);
   SecureStorage::saveApiKey(kCopilotKeyName, config.copilotKey);
+  SecureStorage::saveApiKey(kLocalAIKeyName, config.localAIKey);
+  SettingsStorage::saveString(kLocalAIEndpointName, config.localAIEndpoint);
   savePreferencesToSettings(config);
   cleanupSecurePreferenceBlobs();
   g_config = config;
@@ -1657,6 +1684,12 @@ void applyLocalizedSettingsText(HWND hwnd) {
                    tr(TextId::SettingsApiKeysClaudeHint));
   ::SetWindowTextW(::GetDlgItem(hwnd, IDC_API_KEYS_OPENROUTER_HINT),
                    tr(TextId::SettingsApiKeysOpenRouterHint));
+  ::SetWindowTextW(::GetDlgItem(hwnd, IDC_LOCAL_AI_ENDPOINT_LABEL),
+                   tr(TextId::SettingsLocalAIEndpointLabel));
+  ::SetWindowTextW(::GetDlgItem(hwnd, IDC_LOCAL_AI_KEY_LABEL),
+                   tr(TextId::SettingsLocalAIKeyLabel));
+  ::SetWindowTextW(::GetDlgItem(hwnd, IDC_API_KEYS_LOCAL_AI_HINT),
+                   tr(TextId::SettingsApiKeysLocalAIHint));
   ::SetWindowTextW(::GetDlgItem(hwnd, IDC_PROMPT_PROFILE_GROUP),
                    g_uiLanguage == UiLanguage::Chinese
                        ? L"\u55AE\u8F2A\u63D0\u793A\u8A5E\u8A2D\u5B9A"
@@ -1748,6 +1781,41 @@ void updateModelCombo() {
 
   if (signInButton) {
     ::ShowWindow(signInButton, SW_HIDE);
+  }
+
+  // LocalAI provider uses base URL instead of API key for access
+  if (g_currentProvider == LLMProvider::LocalAI) {
+    std::wstring baseUrl = trimWhitespace(g_config.localAIEndpoint);
+    if (baseUrl.empty()) {
+      populateModelComboPlaceholder(modelCombo, g_uiLanguage == UiLanguage::Chinese ? L"\u8ACB\u5148\u5728\u8A2D\u5B9A\u4E2D\u8A2D\u5B9A Base URL" : L"Configure Base URL in Settings");
+      return;
+    }
+    std::wstring localKey = trimWhitespace(g_config.localAIKey);
+    ModelListResponse response = LLMApiClient::listLocalAIModels(baseUrl, localKey);
+    wipeString(localKey);
+    if (!response.success || response.models.empty()) {
+      populateModelComboPlaceholder(modelCombo, g_uiLanguage == UiLanguage::Chinese ? L"\u7121\u6CD5\u8F09\u5165\u6A21\u578B" : L"Unable to load models");
+      if (!response.errorMessage.empty()) {
+        addMessage(false, L"[Model Load Error] " + response.errorMessage);
+        updateChatDisplay();
+      }
+      return;
+    }
+    ::EnableWindow(modelCombo, TRUE);
+    ::SendMessageW(modelCombo, CB_RESETCONTENT, 0, 0);
+    int selectedIndex = 0;
+    for (size_t i = 0; i < response.models.size(); ++i) {
+      const std::wstring &model = response.models[i];
+      ::SendMessageW(modelCombo, CB_ADDSTRING, 0,
+                     reinterpret_cast<LPARAM>(model.c_str()));
+      if (!g_currentModel.empty() && g_currentModel == model) {
+        selectedIndex = static_cast<int>(i);
+      }
+    }
+    ::SendMessageW(modelCombo, CB_SETCURSEL, static_cast<WPARAM>(selectedIndex), 0);
+    g_currentModel = response.models[static_cast<size_t>(selectedIndex)];
+    ::SendMessageW(modelCombo, CB_SETDROPPEDWIDTH, 250, 0);
+    return;
   }
 
   std::wstring apiKey = getProviderApiKey(g_currentProvider);
@@ -2018,6 +2086,10 @@ LLMResponse callCurrentProvider(const std::wstring &apiKey,
     return LLMApiClient::callClaude(apiKey, prompt, g_currentModel);
   case LLMProvider::OpenRouter:
     return LLMApiClient::callOpenRouter(apiKey, prompt, g_currentModel);
+  case LLMProvider::LocalAI: {
+    std::wstring baseUrl = trimWhitespace(g_config.localAIEndpoint);
+    return LLMApiClient::callLocalAI(baseUrl, apiKey, prompt, g_currentModel);
+  }
   default: {
     LLMResponse unsupported;
     unsupported.errorMessage = L"Unsupported provider";
@@ -2031,9 +2103,17 @@ std::wstring invokeProvider(const std::wstring &prompt) {
     return L"[Notice] GitHub Copilot is currently paused in this build.";
   }
 
+  // LocalAI requires a base URL; API key is optional
+  if (g_currentProvider == LLMProvider::LocalAI) {
+    std::wstring baseUrl = trimWhitespace(g_config.localAIEndpoint);
+    if (baseUrl.empty()) {
+      return L"[Error] Local AI base URL is not configured. Open Settings to configure it.";
+    }
+  }
+
   std::wstring apiKey = getProviderApiKey(g_currentProvider);
 
-  if (apiKey.empty()) {
+  if (apiKey.empty() && g_currentProvider != LLMProvider::LocalAI) {
     return L"[Error] API key not configured for " + getProviderName(g_currentProvider) +
            L". Open Settings to configure it.";
   }
@@ -2108,6 +2188,10 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwnd, UINT message, WPARAM wParam,
                      incoming->claudeKey.c_str());
     ::SetWindowTextW(::GetDlgItem(hwnd, IDC_OPENROUTER_KEY_EDIT),
                      incoming->openRouterKey.c_str());
+    ::SetWindowTextW(::GetDlgItem(hwnd, IDC_LOCAL_AI_ENDPOINT_EDIT),
+                     incoming->localAIEndpoint.c_str());
+    ::SetWindowTextW(::GetDlgItem(hwnd, IDC_LOCAL_AI_KEY_EDIT),
+                     incoming->localAIKey.c_str());
 
     HWND providerCombo = ::GetDlgItem(hwnd, IDC_DEFAULT_PROVIDER_COMBO);
     ::SendMessageW(providerCombo, CB_RESETCONTENT, 0, 0);
@@ -2132,6 +2216,8 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwnd, UINT message, WPARAM wParam,
     ::SendMessageW(::GetDlgItem(hwnd, IDC_CLAUDE_KEY_EDIT), EM_SETPASSWORDCHAR,
                    maskChar, 0);
     ::SendMessageW(::GetDlgItem(hwnd, IDC_OPENROUTER_KEY_EDIT), EM_SETPASSWORDCHAR,
+                   maskChar, 0);
+    ::SendMessageW(::GetDlgItem(hwnd, IDC_LOCAL_AI_KEY_EDIT), EM_SETPASSWORDCHAR,
                    maskChar, 0);
     ::SendMessageW(::GetDlgItem(hwnd, IDC_SEND_SHORTCUT_CHECK), BM_SETCHECK,
                    incoming->requireCtrlEnterToSend ? BST_CHECKED : BST_UNCHECKED,
@@ -2201,6 +2287,7 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwnd, UINT message, WPARAM wParam,
 
       std::wstring apiKey;
       std::wstring providerName;
+      std::wstring localBaseUrl;
       switch (provider) {
       case LLMProvider::OpenAI:
         apiKey = config->openAIKey;
@@ -2218,11 +2305,32 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwnd, UINT message, WPARAM wParam,
         apiKey = config->openRouterKey;
         providerName = L"OpenRouter";
         break;
+      case LLMProvider::LocalAI: {
+        wchar_t urlBuf[512]{};
+        ::GetWindowTextW(::GetDlgItem(hwnd, IDC_LOCAL_AI_ENDPOINT_EDIT), urlBuf, 512);
+        localBaseUrl = trimWhitespace(urlBuf);
+        wchar_t keyBuf[512]{};
+        ::GetWindowTextW(::GetDlgItem(hwnd, IDC_LOCAL_AI_KEY_EDIT), keyBuf, 512);
+        apiKey = trimWhitespace(keyBuf);
+        SecureZeroMemory(keyBuf, sizeof(keyBuf));
+        providerName = L"Local AI";
+        break;
+      }
       default:
         return TRUE;
       }
 
-      if (apiKey.empty()) {
+      if (provider == LLMProvider::LocalAI) {
+        if (localBaseUrl.empty()) {
+          const std::wstring warningText =
+              g_uiLanguage == UiLanguage::Chinese
+                  ? L"\u5C1A\u672A\u8A2D\u5B9A Local AI Base URL\u3002"
+                  : L"No Base URL configured for Local AI.";
+          ::MessageBoxW(hwnd, warningText.c_str(), tr(TextId::SettingsTitle),
+                        MB_OK | MB_ICONWARNING);
+          return TRUE;
+        }
+      } else if (apiKey.empty()) {
         const std::wstring warningText =
             g_uiLanguage == UiLanguage::Chinese
                 ? L"\u5C1A\u672A\u8A2D\u5B9A " + providerName + L" API Key\u3002"
@@ -2242,6 +2350,8 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwnd, UINT message, WPARAM wParam,
         testResponse = LLMApiClient::listClaudeModels(apiKey);
       } else if (provider == LLMProvider::OpenRouter) {
         testResponse = LLMApiClient::listOpenRouterModels(apiKey);
+      } else if (provider == LLMProvider::LocalAI) {
+        testResponse = LLMApiClient::listLocalAIModels(localBaseUrl, apiKey);
       }
       ::SetCursor(oldCursor);
 
@@ -2289,7 +2399,12 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwnd, UINT message, WPARAM wParam,
       config->claudeKey = trimWhitespace(text);
       ::GetWindowTextW(::GetDlgItem(hwnd, IDC_OPENROUTER_KEY_EDIT), text, 512);
       config->openRouterKey = trimWhitespace(text);
+      ::GetWindowTextW(::GetDlgItem(hwnd, IDC_LOCAL_AI_KEY_EDIT), text, 512);
+      config->localAIKey = trimWhitespace(text);
       SecureZeroMemory(text, sizeof(text));
+      wchar_t urlText[512]{};
+      ::GetWindowTextW(::GetDlgItem(hwnd, IDC_LOCAL_AI_ENDPOINT_EDIT), urlText, 512);
+      config->localAIEndpoint = trimWhitespace(urlText);
       capturePromptSettingsFromDialog(hwnd, *config);
 
       ::EndDialog(hwnd, IDOK);
@@ -2729,9 +2844,16 @@ LRESULT CALLBACK ScintillaSubclassProc(HWND hwnd, UINT message, WPARAM wParam,
     return ::DefWindowProcW(hwnd, message, wParam, lParam);
   }
 
-  if (message == WM_CONTEXTMENU && !getSelectionText(hwnd).empty()) {
-    showAiContextMenu(hwnd, lParam);
-    return 0;
+  if (message == WM_CONTEXTMENU) {
+    const bool hasSelection = !getSelectionText(hwnd).empty();
+    const bool ctrlPressed = (::GetKeyState(VK_CONTROL) & 0x8000) != 0;
+
+    if (hasSelection && ctrlPressed) {
+      showAiContextMenu(hwnd, lParam);
+      return 0;
+    }
+
+    return ::CallWindowProcW(original, hwnd, message, wParam, lParam);
   }
 
   return ::CallWindowProcW(original, hwnd, message, wParam, lParam);

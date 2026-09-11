@@ -6,9 +6,11 @@ import json
 import os
 from pathlib import Path
 import platform
+import shutil
 import subprocess
 import sys
 import tempfile
+import zipfile
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
@@ -72,6 +74,25 @@ def policy_project(source, destination):
     ET.ElementTree(root).write(destination, encoding="utf-8", xml_declaration=True)
 
 
+def verify_package(package, expected_dll_hash):
+    digest = hashlib.sha256(package.read_bytes()).hexdigest()
+    checksum = Path(str(package) + ".sha256").read_text(encoding="ascii").strip()
+    if checksum.lower() != f"{digest}  {package.name}".lower():
+        raise RuntimeError("ZIP checksum sidecar mismatch")
+    try:
+        with zipfile.ZipFile(package) as archive:
+            names = archive.namelist()
+            if names.count("NppAIAssistant.dll") != 1 or any(n.lower().endswith(".pdb") for n in names):
+                raise RuntimeError("Invalid plugin ZIP layout or bundled symbols")
+            if hashlib.sha256(archive.read("NppAIAssistant.dll")).hexdigest() != expected_dll_hash.lower():
+                raise RuntimeError("Packaged DLL differs from validated build")
+            if archive.testzip() is not None:
+                raise RuntimeError("ZIP integrity check failed")
+    except zipfile.BadZipFile as error:
+        raise RuntimeError("Invalid ZIP archive") from error
+    return digest
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--expected-commit", required=True,
@@ -84,7 +105,7 @@ def main(argv=None):
     receipt = {"status": "FAILED", "host_acceptance": "NOT_RUN",
                "expected_commit": args.expected_commit, "platform": platform.platform(),
                "started_utc": datetime.now(timezone.utc).isoformat(),
-               "builds": [], "policy_test": "NOT_RUN"}
+               "builds": [], "packages": [], "policy_test": "NOT_RUN"}
     code = 1
     try:
         receipt["commit"] = preflight(repo, args.expected_commit)
@@ -116,6 +137,26 @@ def main(argv=None):
             repo, testdir / "build.log")
         receipt["policy_output"] = run([str(testdir / "policy.exe")], repo, testdir / "test.log")
         receipt["policy_test"] = "PASS"
+        preflight(repo, args.expected_commit)
+        powershell = shutil.which("pwsh") or shutil.which("powershell")
+        if not powershell:
+            raise RuntimeError("PowerShell is required to create Windows ZIP packages")
+        for build in receipt["builds"]:
+            if build["configuration"] != "Release":
+                continue
+            package_dir = output / "packages" / build["platform"]
+            package_dir.mkdir(parents=True)
+            run([powershell, "-NoProfile", "-NonInteractive", "-File",
+                 str(repo / "scripts/package-npp-ai-plugin.ps1"),
+                 "-Platform", build["platform"], "-DllPath", build["dll"],
+                 "-ExpectedDllSha256", build["sha256"], "-SourceCommit", args.expected_commit,
+                 "-Candidate", "-OutDir", str(package_dir)], repo, package_dir / "package.log")
+            packages = list(package_dir.glob("*.zip"))
+            if len(packages) != 1:
+                raise RuntimeError("Expected exactly one canonical ZIP per architecture")
+            package = packages[0]
+            receipt["packages"].append({"platform": build["platform"], "zip": str(package),
+                                        "sha256": verify_package(package, build["sha256"])})
         preflight(repo, args.expected_commit)
         receipt["status"] = "BUILD_TEST_PASS_HOST_PENDING"
         code = 0

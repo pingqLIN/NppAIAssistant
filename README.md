@@ -8,6 +8,8 @@
 
 A native Notepad++ plugin for explaining code, rewriting text, and turning a request into a useful draft—using a cloud provider or a local model.
 
+[Windows downloads & installation](DOWNLOADS.md)
+
 [繁體中文](README_zh-TW.md) · [Download](https://github.com/pingqLIN/NppAIAssistant/releases/latest) · [Report an issue](https://github.com/pingqLIN/NppAIAssistant/issues) · [GPL-3.0](LICENSE)
 
 > **Version guide:** the published x64 release and official Plugin List entry are **0.1.0.0** (`v0.1.0`). The workspace tour below shows the **0.2.0.6 candidate**, which is not yet a published download. These new screenshots show actual native dialogs with sample content in an isolated UI preview; they do not demonstrate a live model response or a full Notepad++ host test.

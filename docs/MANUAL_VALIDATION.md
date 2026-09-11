@@ -21,7 +21,7 @@ CI results. A manually dispatched GitHub workflow still needs Actions admission.
 Use a clean, isolated Windows worktree and run the build directly, outside
 GitHub Actions. This consumes no GitHub-hosted runner minutes and does not rely
 on the Actions scheduler. Prerequisites are Python 3, Git, Visual Studio 2022 C++
-tools (v143) and Windows SDK. ARM64 tools are needed only for the full matrix.
+tools (v143), Windows SDK and PowerShell. ARM64 tools are needed only for the full matrix.
 
 Suggested worktree: `Q:\Projects\_worktrees\NppAIAssistant-pr6-manual`.
 Open a new PowerShell terminal for this task. Before creating it, inspect existing
@@ -40,7 +40,7 @@ python scripts/manual-validate.py --expected-commit <reviewed-full-sha>
 ```
 
 Default execution builds x64 Debug and Release, builds and runs the eight
-context-menu policy cases, and verifies the source remains clean and unchanged.
+context-menu policy cases, packages each Release DLL as a candidate ZIP, and verifies the source remains clean and unchanged.
 Add `--all-platforms` to build the original six-target CI matrix; the policy
 executable is x64 and therefore needs an x64 Windows host (or compatible execution).
 The script does not download or install tools, call any model API, start Notepad++,
@@ -48,14 +48,14 @@ install a DLL, publish a release, or write a GitHub check status.
 
 Each run creates a fresh `npp-manual-validation-*` directory under the Windows
 temporary directory. It contains build logs, DLLs, their SHA-256 values and
-`result.json`. Build output is redirected outside the source worktree. Preserve
+`result.json`, plus `packages/<architecture>/*.zip` and `.zip.sha256`. Candidate filenames include the source commit prefix; their DLL version is preserved. The ZIP must contain the exact validated DLL at its root, contain no PDB files, and match its checksum sidecar. Existing packages are never overwritten. Build output is redirected outside the source worktree. Preserve
 the directory with the review evidence before clearing temporary files.
 
 Exit code 0 with `BUILD_TEST_PASS_HOST_PENDING` means only that the requested
-build matrix and policy tests passed. Exit code 1 / `FAILED` records the actual
+build matrix, policy tests and package integrity checks passed. Exit code 1 / `FAILED` records the actual
 failure; missing Windows or tools cannot produce a pass. Follow
 [`tests/README.md`](../tests/README.md) for the mandatory Notepad++ host matrix.
-Use an isolated portable host and keep the tested DLL SHA-256 with the results.
+Use the DLL extracted from the candidate ZIP in an isolated portable host and keep both DLL and ZIP SHA-256 values with the results. Publish an accepted candidate only as a prerelease; follow [Windows downloads](../DOWNLOADS.md) for distribution.
 
 ## Manual merge decision
 
@@ -79,5 +79,5 @@ python tests/manual-validation.test.py
 ```
 
 These portable tests exercise real Git revision/dirty-worktree rejection,
-subprocess failure and logging, and generated MSBuild XML path escaping. They
+subprocess failure and logging, generated MSBuild XML path escaping, and ZIP integrity / validated-DLL identity checks. They
 do not stand in for a Windows build.

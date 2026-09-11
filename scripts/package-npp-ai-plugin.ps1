@@ -1,9 +1,14 @@
 param(
     [string]$Version = "",
+    [ValidateSet("x64", "Win32", "ARM64")]
     [string]$Platform = "x64",
     [string]$Configuration = "Release",
     [string]$ReleaseUrl = "",
-    [string]$OutDir = ""
+    [string]$OutDir = "",
+    [string]$DllPath = "",
+    [string]$ExpectedDllSha256 = "",
+    [string]$SourceCommit = "",
+    [switch]$Candidate
 )
 
 $ErrorActionPreference = "Stop"
@@ -15,19 +20,29 @@ if ([string]::IsNullOrWhiteSpace($OutDir)) {
 
 $pluginRoot = $repoRoot
 $buildDir = Join-Path $repoRoot "build\$Platform\$Configuration\plugins\NppAIAssistant"
-$dllPath = Join-Path $buildDir "NppAIAssistant.dll"
+if ([string]::IsNullOrWhiteSpace($DllPath)) {
+    $DllPath = Join-Path $buildDir "NppAIAssistant.dll"
+}
 $pdbPath = Join-Path $buildDir "NppAIAssistant.pdb"
 $metadataPath = Join-Path $pluginRoot "plugin-admin-metadata.json"
 
-if (-not (Test-Path $dllPath)) {
-    throw "Plugin DLL not found: $dllPath"
+if (-not (Test-Path $DllPath)) {
+    throw "Plugin DLL not found: $DllPath"
 }
 if (-not (Test-Path $metadataPath)) {
     throw "Plugin metadata file not found: $metadataPath"
 }
 
+if ($Candidate -and $SourceCommit -notmatch '^[0-9a-f]{40}$') {
+    throw 'Candidate packages require a full source commit SHA.'
+}
+$dllSha256 = (Get-FileHash -LiteralPath $DllPath -Algorithm SHA256).Hash.ToUpperInvariant()
+if ($ExpectedDllSha256 -and $dllSha256 -ne $ExpectedDllSha256.ToUpperInvariant()) {
+    throw 'DLL changed since validation; refusing to package.'
+}
+
 $metadata = Get-Content $metadataPath -Raw | ConvertFrom-Json
-$dllInfo = (Get-Item $dllPath).VersionInfo
+$dllInfo = (Get-Item $DllPath).VersionInfo
 $dllVersion = $dllInfo.ProductVersion
 if ([string]::IsNullOrWhiteSpace($dllVersion)) {
     $dllVersion = $dllInfo.FileVersion
@@ -42,9 +57,13 @@ if ($Version -ne $dllVersion) {
     throw "Provided version '$Version' does not match DLL version '$dllVersion'."
 }
 
-$zipName = "$($metadata.folderName)-$Version-$Platform.zip"
+$packageStem = "$($metadata.folderName)-$Version-$Platform"
+if ($Candidate) {
+    $packageStem += "-candidate-$($SourceCommit.Substring(0, 8))"
+}
+$zipName = "$packageStem.zip"
 $zipPath = Join-Path $OutDir $zipName
-$stageRoot = Join-Path $OutDir "_stage\$($metadata.folderName)-$Version-$Platform"
+$stageRoot = Join-Path $OutDir "_stage\$packageStem"
 $docRoot = Join-Path $stageRoot "doc\$($metadata.folderName)"
 
 if (Test-Path $stageRoot) {
@@ -53,7 +72,11 @@ if (Test-Path $stageRoot) {
 
 New-Item -ItemType Directory -Force -Path $docRoot | Out-Null
 
-Copy-Item $dllPath (Join-Path $stageRoot "$($metadata.folderName).dll") -Force
+Copy-Item $DllPath (Join-Path $stageRoot "$($metadata.folderName).dll") -Force
+$stagedHash = (Get-FileHash -LiteralPath (Join-Path $stageRoot "$($metadata.folderName).dll") -Algorithm SHA256).Hash
+if ($stagedHash -ne $dllSha256) {
+    throw 'Staged DLL differs from validated input.'
+}
 Copy-Item (Join-Path $pluginRoot "README.md") (Join-Path $docRoot "README.md") -Force
 if (Test-Path (Join-Path $repoRoot "README_zh-TW.md")) {
     Copy-Item (Join-Path $repoRoot "README_zh-TW.md") (Join-Path $docRoot "README_zh-TW.md") -Force
@@ -81,12 +104,13 @@ if ($stagedSymbols) {
 }
 
 if (Test-Path $zipPath) {
-    Remove-Item $zipPath -Force
+    throw "Package already exists; use a new output directory: $zipPath"
 }
 
 Compress-Archive -Path (Join-Path $stageRoot "*") -DestinationPath $zipPath -CompressionLevel Optimal
 
 $sha256 = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToUpperInvariant()
+"$sha256  $zipName" | Set-Content -LiteralPath "$zipPath.sha256" -Encoding ascii
 
 $pluginListEntry = [ordered]@{
     "folder-name" = $metadata.folderName
@@ -108,15 +132,22 @@ $manifest = [ordered]@{
     sha256 = $sha256
     releaseUrl = $ReleaseUrl
     dllVersion = $dllVersion
-    pluginListEntry = $pluginListEntry
+    dllSha256 = $dllSha256
+    sourceCommit = $SourceCommit
+    candidate = [bool]$Candidate
+    pluginListEntry = $(if ($Candidate) { $null } else { $pluginListEntry })
 }
 
-$manifestPath = Join-Path $OutDir "$($metadata.folderName)-$Version-$Platform.plugin-admin.json"
-$pluginListEntryPath = Join-Path $OutDir "$($metadata.folderName)-$Version-$Platform.npp-plugin-entry.json"
+$manifestPath = Join-Path $OutDir "$packageStem.plugin-admin.json"
+$pluginListEntryPath = Join-Path $OutDir "$packageStem.npp-plugin-entry.json"
 
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 $manifest | ConvertTo-Json -Depth 6 | Set-Content $manifestPath -Encoding UTF8
-$pluginListEntry | ConvertTo-Json -Depth 6 | Set-Content $pluginListEntryPath -Encoding UTF8
+if (-not $Candidate) {
+    $pluginListEntry | ConvertTo-Json -Depth 6 | Set-Content $pluginListEntryPath -Encoding UTF8
+} else {
+    $pluginListEntryPath = $null
+}
 
 [pscustomobject]@{
     ZipPath = $zipPath

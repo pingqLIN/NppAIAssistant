@@ -33,6 +33,40 @@ class ValidationTests(unittest.TestCase):
     def git(self, *args):
         return subprocess.check_output(["git", *args], cwd=self.repo, stderr=subprocess.STDOUT, text=True).strip()
 
+    def make_zip(self, dll=b"built dll", name="NppAIAssistant.dll", symbols=False):
+        archive = self.root / "candidate.zip"
+        with manual.zipfile.ZipFile(archive, "w") as zip_:
+            zip_.writestr(name, dll)
+            if symbols:
+                zip_.writestr("debug.pdb", b"symbols")
+        digest = manual.hashlib.sha256(archive.read_bytes()).hexdigest()
+        Path(str(archive) + ".sha256").write_text(f"{digest}  {archive.name}\n")
+        return archive
+
+    def test_package_matches_build(self):
+        archive = self.make_zip()
+        self.assertEqual(manual.verify_package(archive, manual.hashlib.sha256(b"built dll").hexdigest()),
+                         manual.hashlib.sha256(archive.read_bytes()).hexdigest())
+
+    def test_wrong_packaged_dll_rejected(self):
+        with self.assertRaisesRegex(RuntimeError, "differs"):
+            manual.verify_package(self.make_zip(), "0" * 64)
+
+    def test_nested_dll_rejected(self):
+        with self.assertRaisesRegex(RuntimeError, "layout"):
+            manual.verify_package(self.make_zip(name="nested/NppAIAssistant.dll"), "0" * 64)
+
+    def test_symbols_rejected(self):
+        with self.assertRaisesRegex(RuntimeError, "symbols"):
+            manual.verify_package(self.make_zip(symbols=True), "0" * 64)
+
+    def test_changed_zip_rejected(self):
+        archive = self.make_zip()
+        with archive.open("ab") as file:
+            file.write(b"changed")
+        with self.assertRaisesRegex(RuntimeError, "checksum"):
+            manual.verify_package(archive, "0" * 64)
+
     def test_clean_pinned_source(self):
         self.assertEqual(manual.preflight(self.repo, self.head), self.head)
 

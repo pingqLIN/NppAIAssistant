@@ -8,6 +8,8 @@
 
 原生 Notepad++ 外掛，協助解釋程式、改寫文字、整理草稿。你可以選擇雲端 AI 服務，也可以連接本機模型。
 
+[Windows 安裝包與安裝說明](DOWNLOADS.md)
+
 [English](README.md) · [下載](https://github.com/pingqLIN/NppAIAssistant/releases/latest) · [回報問題](https://github.com/pingqLIN/NppAIAssistant/issues) · [GPL-3.0](LICENSE)
 
 > **版本說明：**目前已發布的 x64 套件與官方 Plugin List 條目為 **0.1.0.0**（`v0.1.0`）。下方展示的是尚未公開下載的 **0.2.0.6 候選版工作台**。截圖來自獨立 UI 預覽中的真實原生對話框，使用範例內容；不代表即時模型回覆或完整 Notepad++ host 驗收結果。

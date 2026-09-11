@@ -95,7 +95,18 @@ That means:
 
 ## Context Menu Actions
 
-After selecting text in Notepad++, you can use the AI context menu actions:
+In the development source, select text and hold **Ctrl** while clicking the
+right mouse button to open the AI menu. Ordinary right-click, Shift+F10 and the
+keyboard Menu key retain Notepad++'s native menu, including when Ctrl is held.
+To disable the AI popup entirely, clear **Enable Ctrl + right-click AI menu for
+selected text** in Settings and click OK. The choice persists after restarting;
+Cancel leaves the saved choice unchanged. Plugin menu commands remain available.
+
+The option defaults to enabled for new and existing configurations, but only the
+explicit Ctrl + mouse gesture activates it. This change is not in the published
+v0.1.0 download.
+
+Available AI context actions:
 - AI: Explain Selection
 - AI: Refactor Selection
 - AI: Add Comments
@@ -123,6 +134,6 @@ This helps avoid stale hardcoded model lists and makes the plugin better aligned
 If you are preparing screenshots or a short demo:
 1. Show the settings dialog with prompt preview
 2. Show preset switching
-3. Show the right-click AI actions
+3. Select text, hold Ctrl and right-click to show the AI actions (when enabled)
 4. Show a single request in the AI panel
 5. Highlight that the system is lightweight and single-turn

@@ -15,6 +15,7 @@
 #include "LLMApiClient.h"
 #include "SecureStorage.h"
 #include "SettingsStorage.h"
+#include "ContextMenuPolicy.h"
 #include "NppAIAssistantResources.h"
 
 namespace {
@@ -110,6 +111,7 @@ enum class TextId {
   SettingsDefaultProviderLabel,
   SettingsLanguageLabel,
   SettingsCtrlEnter,
+  SettingsAiContextMenu,
   SettingsApiKeysGroup,
   SettingsApiKeysOpenAIHint,
   SettingsApiKeysGeminiHint,
@@ -160,6 +162,7 @@ struct AIAssistantConfig {
   bool outputPreserveStyle = true;
   bool outputMentionRisks = false;
   bool requireCtrlEnterToSend = false;
+  bool enableAiContextMenu = true;
 };
 
 HINSTANCE g_hInst = nullptr;
@@ -206,6 +209,7 @@ const wchar_t *kOutputPreserveStyleName = L"prompt_output_preserve_style";
 const wchar_t *kOutputMentionRisksName = L"prompt_output_mention_risks";
 const wchar_t *kCustomPromptInstructionsName = L"prompt_custom_instructions";
 const wchar_t *kRequireCtrlEnterName = L"require_ctrl_enter";
+const wchar_t *kEnableAiContextMenuName = L"enable_ai_context_menu";
 
 void cmdTogglePanel();
 void cmdExplainSelection();
@@ -317,7 +321,7 @@ const wchar_t *tr(TextId id) {
     case TextId::PanelSendButton:
       return L"\u9001\u51FA";
     case TextId::WelcomeMessage:
-      return L"\u6B61\u8FCE\u4F7F\u7528 AI \u52A9\u7406\u3002\n\u53EF\u4F7F\u7528 Plugins \u9078\u55AE\u3001\u53F3\u9375\u9078\u53D6\u6587\u5B57\u6216\u76F4\u63A5\u5728\u9019\u88E1\u8F38\u5165\u3002";
+      return L"\u6B61\u8FCE\u4F7F\u7528 AI \u52A9\u7406\u3002\n\u53EF\u4F7F\u7528 Plugins \u9078\u55AE\u3001Ctrl + \u53F3\u9375\u9078\u53D6\u6587\u5B57\u6216\u76F4\u63A5\u5728\u9019\u88E1\u8F38\u5165\u3002";
     case TextId::SelectTextWarning:
       return L"\u8ACB\u5148\u5728\u7DE8\u8F2F\u5668\u4E2D\u9078\u53D6\u4E00\u6BB5\u6587\u5B57\u518D\u4F7F\u7528\u6B64\u529F\u80FD\u3002";
     case TextId::SettingsTitle:
@@ -336,6 +340,8 @@ const wchar_t *tr(TextId id) {
       return L"\u9078\u64C7\u9810\u8A2D AI \u4F9B\u61C9\u5546:";
     case TextId::SettingsLanguageLabel:
       return L"\u8A9E\u8A00\uff1A";
+    case TextId::SettingsAiContextMenu:
+      return L"\u555F\u7528 Ctrl + \u6ED1\u9F20\u53F3\u9375 AI \u9078\u55AE\uFF08\u9700\u9078\u53D6\u6587\u5B57\uFF09";
     case TextId::SettingsCtrlEnter:
       return L"\u5F9E AI \u9762\u677F\u9001\u51FA\u6642\u9700\u8981 Ctrl+Enter";
     case TextId::SettingsApiKeysGroup:
@@ -387,7 +393,7 @@ const wchar_t *tr(TextId id) {
   case TextId::PanelSendButton:
     return L"Send";
   case TextId::WelcomeMessage:
-    return L"Welcome to AI Assistant.\nUse the plugin menu, right-click selected text, or type directly here.";
+    return L"Welcome to AI Assistant.\nUse the plugin menu, Ctrl + right-click selected text (if enabled), or type directly here.";
   case TextId::SelectTextWarning:
     return L"Select some text in the editor before using this command.";
   case TextId::SettingsTitle:
@@ -406,6 +412,8 @@ const wchar_t *tr(TextId id) {
     return L"Select default AI provider:";
   case TextId::SettingsLanguageLabel:
     return L"Language:";
+  case TextId::SettingsAiContextMenu:
+    return L"Enable Ctrl + right-click AI menu for selected text";
   case TextId::SettingsCtrlEnter:
     return L"Require Ctrl+Enter to send from AI panel";
   case TextId::SettingsApiKeysGroup:
@@ -837,6 +845,9 @@ void syncPromptControlsFromConfig(HWND hwnd, const AIAssistantConfig &config) {
 }
 
 void capturePromptSettingsFromDialog(HWND hwnd, AIAssistantConfig &config) {
+  config.enableAiContextMenu =
+      ::SendMessageW(::GetDlgItem(hwnd, IDC_AI_CONTEXT_MENU_CHECK), BM_GETCHECK,
+                     0, 0) == BST_CHECKED;
   config.requireCtrlEnterToSend =
       ::SendMessageW(::GetDlgItem(hwnd, IDC_SEND_SHORTCUT_CHECK), BM_GETCHECK, 0,
                      0) == BST_CHECKED;
@@ -1117,6 +1128,9 @@ void cleanupSecurePreferenceBlobs() {
 }
 
 void loadPreferencesFromSettings(AIAssistantConfig &config) {
+  config.enableAiContextMenu = parseStoredBool(
+      SettingsStorage::loadString(kEnableAiContextMenuName),
+      config.enableAiContextMenu);
   config.requireCtrlEnterToSend = parseStoredBool(
       SettingsStorage::loadString(kRequireCtrlEnterName),
       config.requireCtrlEnterToSend);
@@ -1191,6 +1205,8 @@ void loadPreferencesFromLegacySecureStorage(AIAssistantConfig &config) {
 }
 
 void savePreferencesToSettings(const AIAssistantConfig &config) {
+  SettingsStorage::saveString(kEnableAiContextMenuName,
+                            config.enableAiContextMenu ? L"1" : L"0");
   SettingsStorage::saveSchemaVersion(kSettingsSchemaVersion);
   SettingsStorage::saveString(
       kDefaultProviderName,
@@ -1645,6 +1661,8 @@ void applyLocalizedSettingsText(HWND hwnd) {
                    tr(TextId::SettingsDefaultProviderLabel));
   ::SetWindowTextW(::GetDlgItem(hwnd, IDC_UI_LANGUAGE_LABEL),
                    tr(TextId::SettingsLanguageLabel));
+  ::SetWindowTextW(::GetDlgItem(hwnd, IDC_AI_CONTEXT_MENU_CHECK),
+                   tr(TextId::SettingsAiContextMenu));
   ::SetWindowTextW(::GetDlgItem(hwnd, IDC_SEND_SHORTCUT_CHECK),
                    tr(TextId::SettingsCtrlEnter));
   ::SetWindowTextW(::GetDlgItem(hwnd, IDC_API_KEYS_GROUP),
@@ -2135,6 +2153,9 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwnd, UINT message, WPARAM wParam,
                    maskChar, 0);
     ::SendMessageW(::GetDlgItem(hwnd, IDC_SEND_SHORTCUT_CHECK), BM_SETCHECK,
                    incoming->requireCtrlEnterToSend ? BST_CHECKED : BST_UNCHECKED,
+                   0);
+    ::SendMessageW(::GetDlgItem(hwnd, IDC_AI_CONTEXT_MENU_CHECK), BM_SETCHECK,
+                   incoming->enableAiContextMenu ? BST_CHECKED : BST_UNCHECKED,
                    0);
     applyLocalizedSettingsText(hwnd);
     updatePromptPreviewInSettings(hwnd, *incoming);
@@ -2729,9 +2750,18 @@ LRESULT CALLBACK ScintillaSubclassProc(HWND hwnd, UINT message, WPARAM wParam,
     return ::DefWindowProcW(hwnd, message, wParam, lParam);
   }
 
-  if (message == WM_CONTEXTMENU && !getSelectionText(hwnd).empty()) {
-    showAiContextMenu(hwnd, lParam);
-    return 0;
+  if (message == WM_CONTEXTMENU && g_config.enableAiContextMenu) {
+    const bool keyboardInvocation = lParam == static_cast<LPARAM>(-1);
+    const bool ctrlPressed = (::GetKeyState(VK_CONTROL) & 0x8000) != 0;
+    // Keep ordinary right-click and keyboard context menus native. Avoid
+    // copying selected document text when the AI gesture was not requested.
+    if (!keyboardInvocation && ctrlPressed &&
+        ContextMenuPolicy::shouldShowAiMenu(
+            g_config.enableAiContextMenu, keyboardInvocation, ctrlPressed,
+            !getSelectionText(hwnd).empty())) {
+      showAiContextMenu(hwnd, lParam);
+      return 0;
+    }
   }
 
   return ::CallWindowProcW(original, hwnd, message, wParam, lParam);

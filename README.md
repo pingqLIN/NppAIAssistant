@@ -12,6 +12,8 @@ A native Notepad++ plugin for explaining code, rewriting text, and turning a req
 
 > **Version guide:** the published x64 release and official Plugin List entry are **0.1.0.0** (`v0.1.0`). The workspace tour below shows the **0.2.0.6 candidate**, which is not yet a published download. These new screenshots show actual native dialogs with sample content in an isolated UI preview; they do not demonstrate a live model response or a full Notepad++ host test.
 
+> **Development source:** OpenRouter is already included in `main` (PR #3). The optional AI context menu uses Ctrl + mouse right-click on selected text; ordinary right-click and keyboard menus stay native. Disable it in Settings. This behavior is not in the published v0.1.0 download. See [usage](docs/USAGE.md#context-menu-actions).
+
 ## From a question to an edit
 
 1. **Choose a service and model.** Use your preferred cloud API or a local LM Studio endpoint.

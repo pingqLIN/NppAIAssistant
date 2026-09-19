@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/readme/nppaiassistant-banner.png" alt="An original fox editing companion presenting blank document cards" width="100%">
+  <img src="docs/assets/readme/nppaiassistant-banner.jpeg" alt="A fox editing companion guiding illuminated pages through a night workspace" width="100%">
 </p>
 
 # NppAIAssistant
@@ -22,6 +22,10 @@ A native Notepad++ plugin for explaining code, rewriting text, and turning a req
 2. **Shape the request.** Select a task preset and output format, then inspect the prompt before sending.
 3. **Read the result.** Switch between a basic formatted preview and the original response.
 4. **Choose where it goes.** Keep the answer in the panel, insert at the cursor, replace the selection, or create a new document.
+
+<p align="center">
+  <img src="docs/assets/readme/nppaiassistant-workflow.jpeg" alt="The fox companion pulling illuminated pages through a moonlit workspace, representing text moving through an editing workflow" width="100%">
+</p>
 
 ## Meet the workspace · 0.2.0.6 preview
 
@@ -50,6 +54,10 @@ The settings separate provider connections from prompt configuration. LM Studio 
 <img src="docs/assets/screenshots/prompt-0.2.0.6-en.png" alt="Native prompt settings showing task presets, output rules and prompt preview" width="680">
 
 Prompt configuration brings task presets, response language, output rules, and the assembled preview into one place. Built-in template sections are locked by default and require an explicit unlock to edit. Optional visible Memory is disabled by default; it is ordinary local text, so keep secrets out of it.
+
+<p align="center">
+  <img src="docs/assets/readme/nppaiassistant-prompt-companion.jpeg" alt="Close-up of the fox editing companion directing illuminated pages, echoing prompt inspection and deliberate document edits" width="680">
+</p>
 
 ## Providers and output
 

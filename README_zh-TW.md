@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/readme/nppaiassistant-banner.png" alt="原創狐狸編輯夥伴，引導空白文件卡片形成清楚的工作空間" width="100%">
+  <img src="docs/assets/readme/nppaiassistant-banner.jpeg" alt="狐狸編輯夥伴在夜色工作空間中引導發光文件頁面" width="100%">
 </p>
 
 # NppAIAssistant
@@ -22,6 +22,10 @@
 2. **整理這次請求。**選擇任務預設與輸出格式，送出前檢查組合後的提示。
 3. **檢視回覆。**切換基本格式預覽與原文，確認內容符合需求。
 4. **決定寫入位置。**保留在面板、插入游標、取代選取文字，或建立新文件。
+
+<p align="center">
+  <img src="docs/assets/readme/nppaiassistant-workflow.jpeg" alt="狐狸編輯夥伴在月夜工作空間中牽引發光文件，象徵文字在編輯流程中的移動" width="100%">
+</p>
 
 ## 認識工作台 · 0.2.0.6 預覽
 
@@ -50,6 +54,10 @@
 <img src="docs/assets/screenshots/prompt-0.2.0.6-en.png" alt="原生提示設定，顯示任務預設、輸出規則及組合提示預覽" width="680">
 
 任務預設、回覆語言、輸出規則與組合提示預覽集中呈現。內建範本區塊預設鎖定，需要明確解鎖才能修改。可見的 Memory 預設關閉，內容以一般本機文字儲存，請勿放入秘密資訊。
+
+<p align="center">
+  <img src="docs/assets/readme/nppaiassistant-prompt-companion.jpeg" alt="狐狸編輯夥伴近景引導發光文件，呼應提示檢視與由使用者決定的文件寫入" width="680">
+</p>
 
 ## 服務與輸出格式
 

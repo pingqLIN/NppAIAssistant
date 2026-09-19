@@ -4,9 +4,9 @@
 
 ## An editing companion
 
-The banner introduces an original fox guide with blank document cards. The cards connect the illustration to the plugin's work with text; the open gesture suggests that the user chooses the next step. The fox is a creative direction chosen for this redesign, not an established Notepad++ character or an official endorsement.
+The README artwork introduces an original fox editing companion guiding illuminated document pages through a night workspace. The moving pages connect the illustration to the plugin's text workflow, while the character directs rather than automatically applies the edits. The fox is a creative direction chosen for this redesign, not an established Notepad++ character or an official endorsement.
 
-The composition places the character on the left and reserves a calm area on the right. A deep navy background, warm amber fur, and teal accents keep the artwork readable above both language versions of the README. The banner contains no embedded title, so the project name stays selectable, accessible Markdown text.
+The banner uses a wide composition with the character on the left and the document flow extending across the frame. Two companion illustrations echo the same visual language around the workflow and prompt-inspection sections. Deep navy surroundings, warm amber fur, and blue-white document trails keep the series coherent across both README languages. The images contain no embedded project title, so the project name remains selectable, accessible Markdown text.
 
 The artwork was generated with AI in a polished 3D illustration style. Render terminology used during concept development describes the desired appearance; it is not a claim about a particular rendering engine. No third-party logo or application interface was supplied as an image reference.
 

@@ -12,7 +12,7 @@ A native Notepad++ plugin for explaining code, rewriting text, and turning a req
 
 [繁體中文](README_zh-TW.md) · [Download](https://github.com/pingqLIN/NppAIAssistant/releases/latest) · [Report an issue](https://github.com/pingqLIN/NppAIAssistant/issues) · [GPL-3.0](LICENSE)
 
-> **Version guide:** the current GitHub x64 release is **0.2.0.6** (`v0.2.0.6`). The Notepad++ Plugins Admin entry may still show the previous version while [upstream Plugin List PR #1196](https://github.com/notepad-plus-plus/nppPluginList/pull/1196) is reviewed. The workspace tour below reflects the 0.2.0.6 UI. Screenshots use native controls; release host acceptance was completed separately from screenshot capture.
+> **Version guide:** the current GitHub x64 release is **0.2.0.6** (`v0.2.0.6`). The official Notepad++ Plugin List x64 entry is also at **0.2.0.6** via [upstream PR #1196](https://github.com/notepad-plus-plus/nppPluginList/pull/1196); individual installations may see the Plugins Admin update after list propagation. The workspace tour below reflects the 0.2.0.6 UI. Screenshots use native controls; release host acceptance was completed separately from screenshot capture.
 
 > **Release behavior:** OpenRouter is included in v0.2.0.6. The optional AI context menu uses Ctrl + mouse right-click on selected text; ordinary right-click and keyboard menus stay native, and the feature can be disabled in Settings. See [usage](docs/USAGE.md#context-menu-actions).
 

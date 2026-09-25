@@ -12,7 +12,7 @@
 
 [English](README.md) · [下載](https://github.com/pingqLIN/NppAIAssistant/releases/latest) · [回報問題](https://github.com/pingqLIN/NppAIAssistant/issues) · [GPL-3.0](LICENSE)
 
-> **版本說明：**目前 GitHub x64 正式版為 **0.2.0.6**（`v0.2.0.6`）。Notepad++ Plugins Admin 在 [上游 Plugin List PR #1196](https://github.com/notepad-plus-plus/nppPluginList/pull/1196) 審核完成前，可能仍顯示舊版。下方工作台導覽對應 0.2.0.6 介面；截圖使用真實原生控制項，正式版的 host acceptance 另行完成。
+> **版本說明：**目前 GitHub x64 正式版為 **0.2.0.6**（`v0.2.0.6`）。Notepad++ 官方 Plugin List x64 條目亦已透過 [上游 PR #1196](https://github.com/notepad-plus-plus/nppPluginList/pull/1196) 更新至 **0.2.0.6**；個別安裝環境的 Plugins Admin 顯示可能因清單傳播略有延遲。下方工作台導覽對應 0.2.0.6 介面；截圖使用真實原生控制項，正式版的 host acceptance 另行完成。
 
 > **正式版行為：** v0.2.0.6 已包含 OpenRouter。選取文字後按 Ctrl＋滑鼠右鍵可開啟 AI 選單；一般右鍵與鍵盤選單保留 Notepad++ 原生行為，也可在設定中完全停用 AI 右鍵選單。詳見[使用說明](docs/USAGE.md#context-menu-actions)。
 

@@ -72,10 +72,11 @@ constexpr UINT kAiContextCustomTemplateBase = 100;
 constexpr size_t kContextTemplateCount = 3;
 
 enum class LLMProvider { OpenAI = 0, Gemini = 1, Claude = 2, Copilot = 3,
-                         OpenAICompatible = 4, LMStudio = 5, ProviderCount };
-constexpr std::array<LLMProvider, 5> kEnabledProviders = {
+                         OpenAICompatible = 4, LMStudio = 5, OpenRouter = 6,
+                         ProviderCount };
+constexpr std::array<LLMProvider, 6> kEnabledProviders = {
     LLMProvider::OpenAI, LLMProvider::Gemini, LLMProvider::Claude,
-    LLMProvider::OpenAICompatible, LLMProvider::LMStudio};
+    LLMProvider::OpenRouter, LLMProvider::OpenAICompatible, LLMProvider::LMStudio};
 
 enum class ContextMenuModifier { Ctrl = 0, Shift = 1, Alt = 2, CtrlShift = 3, Disabled = 4 };
 
@@ -364,6 +365,7 @@ struct AIAssistantConfig {
   std::wstring openAIKey;
   std::wstring geminiKey;
   std::wstring claudeKey;
+  std::wstring openRouterKey;
   std::wstring compatibleApiKey;
   std::wstring lmStudioApiKey;
   std::wstring compatibleDisplayName = L"OpenAI Compatible";
@@ -653,6 +655,7 @@ void joinPluginWorkersForShutdown() {
 const wchar_t *kOpenAIKeyName = L"openai_apikey";
 const wchar_t *kGeminiKeyName = L"gemini_apikey";
 const wchar_t *kClaudeKeyName = L"claude_apikey";
+const wchar_t *kOpenRouterKeyName = L"openrouter_apikey";
 const wchar_t *kCompatibleApiKeyName = L"openai_compatible_apikey";
 const wchar_t *kLmStudioApiKeyName = L"lmstudio_apikey";
 const wchar_t *kCopilotOauthKeyName = L"copilot_oauth_token";
@@ -774,6 +777,8 @@ std::wstring getProviderName(LLMProvider provider) {
     return L"Gemini";
   case LLMProvider::Claude:
     return L"Claude";
+  case LLMProvider::OpenRouter:
+    return L"OpenRouter";
   case LLMProvider::Copilot:
     return L"Copilot";
   case LLMProvider::OpenAICompatible:
@@ -2304,6 +2309,8 @@ std::wstring getProviderApiKey(LLMProvider provider) {
     return trimWhitespace(SecureStorage::loadApiKey(kGeminiKeyName));
   case LLMProvider::Claude:
     return trimWhitespace(SecureStorage::loadApiKey(kClaudeKeyName));
+  case LLMProvider::OpenRouter:
+    return trimWhitespace(SecureStorage::loadApiKey(kOpenRouterKeyName));
   case LLMProvider::OpenAICompatible:
     return trimWhitespace(SecureStorage::loadApiKey(kCompatibleApiKeyName));
   case LLMProvider::LMStudio:
@@ -2324,6 +2331,7 @@ void wipeConfigSecrets(AIAssistantConfig &config) {
   wipeString(config.openAIKey);
   wipeString(config.geminiKey);
   wipeString(config.claudeKey);
+  wipeString(config.openRouterKey);
   wipeString(config.compatibleApiKey);
   wipeString(config.lmStudioApiKey);
 }
@@ -3115,6 +3123,7 @@ void saveConfig(const AIAssistantConfig &config) {
   SecureStorage::saveApiKey(kOpenAIKeyName, config.openAIKey);
   SecureStorage::saveApiKey(kGeminiKeyName, config.geminiKey);
   SecureStorage::saveApiKey(kClaudeKeyName, config.claudeKey);
+  SecureStorage::saveApiKey(kOpenRouterKeyName, config.openRouterKey);
   SecureStorage::saveApiKey(kCompatibleApiKeyName, config.compatibleApiKey);
   SecureStorage::saveApiKey(kLmStudioApiKeyName, config.lmStudioApiKey);
   cleanupSecurePreferenceBlobs();
@@ -3840,6 +3849,8 @@ void applyLocalizedSettingsText(HWND hwnd) {
                    tr(TextId::SettingsGeminiKeyLabel));
   ::SetWindowTextW(::GetDlgItem(hwnd, IDC_CLAUDE_KEY_LABEL),
                    tr(TextId::SettingsClaudeKeyLabel));
+  ::SetWindowTextW(::GetDlgItem(hwnd, IDC_OPENROUTER_KEY_LABEL),
+                   L"OpenRouter API Key:");
   ::SetWindowTextW(::GetDlgItem(hwnd, IDC_DEFAULT_PROVIDER_GROUP),
                    tr(TextId::SettingsDefaultProviderGroup));
   ::SetWindowTextW(::GetDlgItem(hwnd, IDC_DEFAULT_PROVIDER_LABEL),
@@ -4171,6 +4182,9 @@ void updateModelCombo() {
     break;
   case LLMProvider::Claude:
     response = LLMApiClient::listClaudeModels(apiKey);
+    break;
+  case LLMProvider::OpenRouter:
+    response = LLMApiClient::listOpenRouterModels(apiKey);
     break;
   default:
     populateModelComboPlaceholder(modelCombo, tr(TextId::ModelProviderUnavailable));
@@ -4908,6 +4922,8 @@ LLMResponse callProvider(const AiRequest &request, const std::wstring &apiKey) {
   case LLMProvider::Claude:
     return LLMApiClient::callClaude(apiKey, request.effectivePrompt, request.model,
                                     request.cacheStablePrefix);
+  case LLMProvider::OpenRouter:
+    return LLMApiClient::callOpenRouter(apiKey, request.effectivePrompt, request.model);
   case LLMProvider::OpenAICompatible:
   case LLMProvider::LMStudio:
     return LLMApiClient::callOpenAICompatible(
@@ -6326,11 +6342,12 @@ void initializeIntegratedProviderControls(HWND hwnd,
                    tr(TextId::CompatibleStatusIdle));
 }
 
-constexpr std::array<int, 30> kSettingsProviderPageControls = {
+constexpr std::array<int, 32> kSettingsProviderPageControls = {
     IDC_API_KEYS_GROUP,
     IDC_OPENAI_KEY_LABEL, IDC_OPENAI_KEY_EDIT,
     IDC_GEMINI_KEY_LABEL, IDC_GEMINI_KEY_EDIT,
     IDC_CLAUDE_KEY_LABEL, IDC_CLAUDE_KEY_EDIT,
+    IDC_OPENROUTER_KEY_LABEL, IDC_OPENROUTER_KEY_EDIT,
     IDC_COMPATIBLE_GROUP,
     IDC_COMPATIBLE_DISPLAY_NAME_LABEL, IDC_COMPATIBLE_DISPLAY_NAME_EDIT,
     IDC_COMPATIBLE_BASE_URL_LABEL, IDC_COMPATIBLE_BASE_URL_EDIT,
@@ -6606,6 +6623,8 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwnd, UINT message, WPARAM wParam,
                      incoming->geminiKey.c_str());
     ::SetWindowTextW(::GetDlgItem(hwnd, IDC_CLAUDE_KEY_EDIT),
                      incoming->claudeKey.c_str());
+    ::SetWindowTextW(::GetDlgItem(hwnd, IDC_OPENROUTER_KEY_EDIT),
+                     incoming->openRouterKey.c_str());
     ::SendMessageW(::GetDlgItem(hwnd, IDC_COMPATIBLE_DISPLAY_NAME_EDIT),
                    EM_SETLIMITTEXT,
                    static_cast<WPARAM>(kMaxCompatibleDisplayNameChars), 0);
@@ -6635,6 +6654,8 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwnd, UINT message, WPARAM wParam,
     ::SendMessageW(::GetDlgItem(hwnd, IDC_GEMINI_KEY_EDIT), EM_SETPASSWORDCHAR,
                    maskChar, 0);
     ::SendMessageW(::GetDlgItem(hwnd, IDC_CLAUDE_KEY_EDIT), EM_SETPASSWORDCHAR,
+                   maskChar, 0);
+    ::SendMessageW(::GetDlgItem(hwnd, IDC_OPENROUTER_KEY_EDIT), EM_SETPASSWORDCHAR,
                    maskChar, 0);
     ::SendMessageW(::GetDlgItem(hwnd, IDC_SEND_SHORTCUT_CHECK), BM_SETCHECK,
                    incoming->requireCtrlEnterToSend ? BST_CHECKED : BST_UNCHECKED,
@@ -6855,6 +6876,8 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwnd, UINT message, WPARAM wParam,
       config->geminiKey = trimWhitespace(text);
       ::GetWindowTextW(::GetDlgItem(hwnd, IDC_CLAUDE_KEY_EDIT), text, 512);
       config->claudeKey = trimWhitespace(text);
+      ::GetWindowTextW(::GetDlgItem(hwnd, IDC_OPENROUTER_KEY_EDIT), text, 512);
+      config->openRouterKey = trimWhitespace(text);
       SecureZeroMemory(text, sizeof(text));
       capturePromptSettingsFromDialog(hwnd, *config);
       if (!state ||
@@ -6883,6 +6906,10 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwnd, UINT message, WPARAM wParam,
       case LLMProvider::Claude:
         apiKey = config->claudeKey;
         providerName = L"Claude";
+        break;
+      case LLMProvider::OpenRouter:
+        apiKey = config->openRouterKey;
+        providerName = L"OpenRouter";
         break;
       case LLMProvider::OpenAICompatible: {
         providerName = config->compatibleDisplayName.empty()
@@ -6940,6 +6967,8 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwnd, UINT message, WPARAM wParam,
         testResponse = LLMApiClient::listGeminiModels(apiKey);
       } else if (provider == LLMProvider::Claude) {
         testResponse = LLMApiClient::listClaudeModels(apiKey);
+      } else if (provider == LLMProvider::OpenRouter) {
+        testResponse = LLMApiClient::listOpenRouterModels(apiKey);
       } else if (compatibleProvider) {
         testResponse = LLMApiClient::listOpenAICompatibleModels(
             compatibleBaseUrl, apiKey, compatibleLoopback);
@@ -6989,6 +7018,8 @@ INT_PTR CALLBACK SettingsDlgProc(HWND hwnd, UINT message, WPARAM wParam,
       config->geminiKey = trimWhitespace(text);
       ::GetWindowTextW(::GetDlgItem(hwnd, IDC_CLAUDE_KEY_EDIT), text, 512);
       config->claudeKey = trimWhitespace(text);
+      ::GetWindowTextW(::GetDlgItem(hwnd, IDC_OPENROUTER_KEY_EDIT), text, 512);
+      config->openRouterKey = trimWhitespace(text);
       SecureZeroMemory(text, sizeof(text));
       capturePromptSettingsFromDialog(hwnd, *config);
       if (!state ||
@@ -7022,6 +7053,7 @@ void openSettingsDialog() {
   edited.openAIKey = SecureStorage::loadApiKey(kOpenAIKeyName);
   edited.geminiKey = SecureStorage::loadApiKey(kGeminiKeyName);
   edited.claudeKey = SecureStorage::loadApiKey(kClaudeKeyName);
+  edited.openRouterKey = SecureStorage::loadApiKey(kOpenRouterKeyName);
   edited.compatibleApiKey = SecureStorage::loadApiKey(kCompatibleApiKeyName);
   edited.lmStudioApiKey = SecureStorage::loadApiKey(kLmStudioApiKeyName);
   if (::DialogBoxParamW(g_hInst, MAKEINTRESOURCEW(IDD_AIASSISTANT_SETTINGS),

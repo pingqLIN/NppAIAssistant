@@ -14,8 +14,16 @@ try {
     $dll = Join-Path $BuildDir 'plugins/NppAIAssistant/Release/NppAIAssistant.dll'
     & python tests/verify-composer-resource.py $dll
     if ($LASTEXITCODE -ne 0) { throw 'Compiled resource check failed.' }
-    $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
-    $dumpbin = @(& $vswhere -latest -products '*' -find 'VC/Tools/MSVC/**/bin/Hostx64/x64/dumpbin.exe') | Select-Object -First 1
+    $vswhereCandidates = @(
+        $(if (${env:ProgramFiles(x86)}) { Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe' }),
+        $(if (${env:ProgramFiles}) { Join-Path ${env:ProgramFiles} 'Microsoft Visual Studio/Installer/vswhere.exe' }),
+        'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe'
+    ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) }
+    $vswhere = $vswhereCandidates | Select-Object -First 1
+    if (-not $vswhere) { throw 'vswhere.exe not found.' }
+    $dumpbin = @(& $vswhere -latest -products '*' -find 'VC/Tools/MSVC/**/bin/Hostx64/x64/dumpbin.exe') |
+        Where-Object { $_ -and (Test-Path -LiteralPath $_) } |
+        Select-Object -First 1
     if (-not $dumpbin) { throw 'dumpbin not found.' }
     & "$PSScriptRoot/Test-NppPluginBinary.ps1" -DllPath $dll -DumpbinPath $dumpbin -Platform x64
 } finally { Pop-Location }

@@ -8,15 +8,21 @@ The project's own distribution location is [GitHub Releases](https://github.com/
 
 ## Available features / 可用功能
 
-Status checked on 2026-09-11. Read each release's asset list and notes before downloading.
+Status checked on 2026-09-26. Read each release's asset list and notes before downloading.
 
 | Version | Windows package | OpenRouter | Optional Ctrl + right-click menu |
 | --- | --- | --- | --- |
+| v0.2.0.6 (DLL 0.2.0.6) | x64 ZIP available | Included | Included |
 | v0.1.0 (DLL 0.1.0.0) | x64 ZIP available | Not included | Not included |
-| main source | No newer published binary yet | Merged in [PR #3](https://github.com/pingqLIN/NppAIAssistant/pull/3), contributed by peppersgc | Pending [PR #6](https://github.com/pingqLIN/NppAIAssistant/pull/6) |
-| PR #6 candidate | Windows build and host acceptance pending; no download yet | Included in source | Included in source |
 
-OpenRouter 原始碼已完成整合，但目前 v0.1.0 安裝包不含此功能。新候選包尚未發布，請勿把原始碼下載或開發畫面當成新版安裝包。
+**v0.2.0.6 is the current GitHub release.** The Notepad++ Plugins Admin entry may still show the previous version until [upstream Plugin List PR #1196](https://github.com/notepad-plus-plus/nppPluginList/pull/1196) is accepted.
+
+Direct x64 asset:
+- `NppAIAssistant-0.2.0.6-x64.zip`
+- SHA-256: `23B5051C584FE331C150D3361FC6FE4A23838CCDD33194F75A544776AC76B621`
+- Checksum sidecar is published beside the ZIP in GitHub Releases.
+
+v0.2.0.6 已正式發布，可直接從 GitHub Releases 下載；Plugins Admin 更新則需等待上游 Plugin List 審核。
 
 ## Install / 手動安裝
 

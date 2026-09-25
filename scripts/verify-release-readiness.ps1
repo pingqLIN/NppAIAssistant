@@ -103,9 +103,17 @@ finally {
 }
 
 $pluginListEntry = $manifest.pluginListEntry
-Assert-Check "Plugin list folder-name matches DLL basename" ($pluginListEntry."folder-name" -eq "NppAIAssistant") "folder-name must be NppAIAssistant."
-Assert-Check "Plugin list version matches manifest" ($pluginListEntry.version -eq $manifest.version) "Entry version '$($pluginListEntry.version)' does not match manifest version '$($manifest.version)'."
-Assert-Check "Plugin list id matches package hash" ($pluginListEntry.id -eq $manifest.sha256) "Entry id must be the package SHA-256."
+if ($null -ne $pluginListEntry) {
+    Assert-Check "Plugin list folder-name matches DLL basename" ($pluginListEntry."folder-name" -eq "NppAIAssistant") "folder-name must be NppAIAssistant."
+    Assert-Check "Plugin list version matches manifest" ($pluginListEntry.version -eq $manifest.version) "Entry version '$($pluginListEntry.version)' does not match manifest version '$($manifest.version)'."
+    Assert-Check "Plugin list id matches package hash" ($pluginListEntry.id -eq $manifest.sha256) "Entry id must be the package SHA-256."
+}
+elseif ($manifest.pluginsAdminReady -or $RequirePluginsAdminReady) {
+    throw "Plugin list entry is missing from a package that requires Plugins Admin readiness."
+}
+else {
+    Write-Host "INFO: Candidate/local package has no pluginListEntry yet."
+}
 
 if ($manifest.pluginsAdminReady) {
     Assert-Check "Plugin list repository is a direct HTTPS zip" (Test-DirectHttpsZipUrl $pluginListEntry.repository) "Repository must be a direct HTTPS .zip URL when PluginsAdminReady is true."
@@ -130,5 +138,5 @@ foreach ($exportName in @("setInfo", "getName", "getFuncsArray", "beNotified", "
     ZipPath = $zipPath
     Sha256 = $computedHash
     PluginsAdminReady = [bool]$manifest.pluginsAdminReady
-    Repository = $pluginListEntry.repository
+    Repository = $(if ($null -ne $pluginListEntry) { $pluginListEntry.repository } else { $manifest.releaseUrl })
 }

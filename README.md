@@ -33,6 +33,8 @@ A native Notepad++ plugin for explaining code, rewriting text, and turning a req
 
 <img src="docs/assets/screenshots/workspace-0.2.0.6-en.png" alt="English native workspace preview showing provider controls, a sample Markdown response, output destination and input box" width="680">
 
+<img src="docs/assets/screenshots/workspace-0.2.0.6-zh-tw.png" alt="Traditional Chinese native workspace preview showing provider controls, response area, output destination and input box" width="680">
+
 The upper controls select the provider, model, task profile, and output format. The response occupies the center; the destination and input remain below it. Resize the panel, drag the input divider, or use **A+ / A−** to make the text comfortable to read.
 
 | Control | What it helps you do |
@@ -46,6 +48,8 @@ The upper controls select the provider, model, task profile, and output format. 
 ### Configure the connection separately from the task
 
 <img src="docs/assets/screenshots/settings-0.2.0.6-en.png" alt="Native settings dialog with empty API key fields and local provider settings" width="680">
+
+<img src="docs/assets/screenshots/settings-0.2.0.6-zh-tw.png" alt="Traditional Chinese AI Services settings showing cloud, OpenAI-compatible and LM Studio connection controls" width="680">
 
 The settings separate provider connections from prompt configuration. LM Studio has its own base URL, API mode, and model selection. Discover available models, then explicitly choose a default model. API keys in this screenshot are empty. Model discovery is unavailable in this network-disabled screenshot fixture.
 

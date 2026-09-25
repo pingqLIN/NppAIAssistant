@@ -1458,7 +1458,7 @@ std::wstring getUiLanguageOptionText(UiLanguagePreference preference) {
   case UiLanguagePreference::English:
     return L"English";
   case UiLanguagePreference::Chinese:
-    return g_uiLanguage == UiLanguage::Chinese ? L"\u4E2D\u6587" : L"Chinese";
+    return L"TW-Zh";
   case UiLanguagePreference::Japanese: return L"日本語";
   case UiLanguagePreference::Spanish: return L"Español";
   default:

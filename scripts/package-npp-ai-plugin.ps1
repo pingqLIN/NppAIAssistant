@@ -18,6 +18,26 @@ if ([string]::IsNullOrWhiteSpace($OutDir)) {
     $OutDir = Join-Path $repoRoot "dist"
 }
 
+function Test-PluginsAdminReleaseUrl {
+    param([string]$Url)
+
+    if ([string]::IsNullOrWhiteSpace($Url)) {
+        return $false
+    }
+
+    $parsedUrl = $null
+    if (-not [System.Uri]::TryCreate($Url, [System.UriKind]::Absolute, [ref]$parsedUrl)) {
+        throw "ReleaseUrl must be an absolute HTTPS URL to the packaged .zip asset."
+    }
+    if ($parsedUrl.Scheme -ne "https") {
+        throw "ReleaseUrl must use HTTPS for Plugins Admin submissions."
+    }
+    if (-not $parsedUrl.AbsolutePath.EndsWith(".zip", [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "ReleaseUrl must point directly to the packaged .zip asset for Plugins Admin submissions."
+    }
+    return $true
+}
+
 $pluginRoot = $repoRoot
 $buildDir = Join-Path $repoRoot "build\$Platform\$Configuration\plugins\NppAIAssistant"
 if ([string]::IsNullOrWhiteSpace($DllPath)) {
@@ -55,6 +75,15 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
 
 if ($Version -ne $dllVersion) {
     throw "Provided version '$Version' does not match DLL version '$dllVersion'."
+}
+
+$pluginsAdminReady = (-not $Candidate) -and (Test-PluginsAdminReleaseUrl -Url $ReleaseUrl)
+$pluginsAdminReadiness = if ($pluginsAdminReady) {
+    "ready"
+} elseif ($Candidate) {
+    "candidate-package: not eligible for Plugins Admin submission"
+} else {
+    "local-package-only: rerun with -ReleaseUrl pointing to the final HTTPS .zip release asset"
 }
 
 $packageStem = "$($metadata.folderName)-$Version-$Platform"
@@ -131,6 +160,8 @@ $manifest = [ordered]@{
     zipPath = $zipPath
     sha256 = $sha256
     releaseUrl = $ReleaseUrl
+    pluginsAdminReady = $pluginsAdminReady
+    pluginsAdminReadiness = $pluginsAdminReadiness
     dllVersion = $dllVersion
     dllSha256 = $dllSha256
     sourceCommit = $SourceCommit
@@ -156,4 +187,6 @@ if (-not $Candidate) {
     PluginListEntryPath = $pluginListEntryPath
     DllVersion = $dllVersion
     Repository = $pluginListEntry.repository
+    PluginsAdminReady = $pluginsAdminReady
+    PluginsAdminReadiness = $pluginsAdminReadiness
 }

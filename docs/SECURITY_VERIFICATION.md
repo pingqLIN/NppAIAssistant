@@ -2,6 +2,12 @@
 
 Use this checklist when validating secret handling changes or preparing a release.
 
+## Scripted regression pass
+
+1. Run `scripts/verify-security-regressions.ps1`.
+2. Confirm the script reports only `PASS` lines.
+3. Run `scripts/Test-ReleaseSource.ps1` for the x64 build, executable tests, compiled resource checks and DLL contract checks.
+
 ## Storage split
 
 1. Launch the plugin with no prior settings and save a provider API key plus a few prompt preferences.
@@ -30,3 +36,7 @@ Use this checklist when validating secret handling changes or preparing a releas
 2. Confirm the script succeeds with the expected zip output.
 3. Confirm no `.pdb` files are present in `dist/_stage` or the final zip.
 4. Confirm packaged docs include the updated README and security docs.
+5. Run `scripts/smoke-package-install.ps1`.
+6. Confirm `RootDllPresent`, `RequiredDocsPresent`, and `PdbPresent: False`.
+7. Treat `PluginsAdminReady: False` as expected for local package smoke until a
+   final HTTPS `.zip` release URL is supplied.

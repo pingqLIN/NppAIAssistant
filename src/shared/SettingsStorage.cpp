@@ -26,6 +26,12 @@ constexpr wchar_t kSchemaVersionKey[] = L"schema_version";
 constexpr wchar_t kSettingsFileName[] = L"NppAIAssistant.ini";
 constexpr wchar_t kMissingSentinel[] = L"__NPPAI_MISSING__";
 constexpr DWORD kSettingsBufferSize = 65535;
+thread_local bool g_writeBatchActive = false;
+thread_local bool g_writeBatchSucceeded = true;
+
+void recordWriteResult(bool succeeded) {
+  if (g_writeBatchActive && !succeeded) g_writeBatchSucceeded = false;
+}
 
 std::wstring getAppDataConfigDirectory() {
   wchar_t appDataPath[MAX_PATH] = {};
@@ -86,6 +92,18 @@ bool SettingsStorage::saveSchemaVersion(int version) {
   return saveString(kSchemaVersionKey, std::to_wstring(version));
 }
 
+void SettingsStorage::beginWriteBatch() {
+  g_writeBatchActive = true;
+  g_writeBatchSucceeded = true;
+}
+
+bool SettingsStorage::endWriteBatch() {
+  const bool succeeded = !g_writeBatchActive || g_writeBatchSucceeded;
+  g_writeBatchActive = false;
+  g_writeBatchSucceeded = true;
+  return succeeded;
+}
+
 std::wstring SettingsStorage::loadString(const std::wstring &keyName) {
   return unescapeValue(readRawValue(keyName));
 }
@@ -94,12 +112,16 @@ bool SettingsStorage::saveString(const std::wstring &keyName,
                                  const std::wstring &value) {
   const std::wstring filePath = getConfigFilePath();
   if (filePath.empty()) {
+    recordWriteResult(false);
     return false;
   }
 
   const std::wstring escaped = escapeValue(value);
-  return WritePrivateProfileStringW(kSettingsSection, keyName.c_str(),
-                                    escaped.c_str(), filePath.c_str()) != 0;
+  const bool succeeded =
+      WritePrivateProfileStringW(kSettingsSection, keyName.c_str(),
+                                 escaped.c_str(), filePath.c_str()) != 0;
+  recordWriteResult(succeeded);
+  return succeeded;
 }
 
 std::wstring SettingsStorage::escapeValue(const std::wstring &value) {

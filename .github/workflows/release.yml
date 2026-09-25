@@ -16,6 +16,11 @@ on:
         description: Four-part DLL version to package, for example 0.2.0.0
         required: true
         type: string
+      publish:
+        description: Publish this verified tag after host acceptance and release review
+        required: true
+        type: boolean
+        default: false
   push:
     tags:
       - 'v*.*.*.*'
@@ -98,13 +103,9 @@ jobs:
       - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@v2
 
-      - name: Build x64 Release DLL
+      - name: Build and validate x64 release source
         shell: pwsh
-        run: >-
-          msbuild NppAIAssistant.vcxproj
-          /m
-          /p:Configuration=Release
-          /p:Platform=x64
+        run: ./scripts/Test-ReleaseSource.ps1
 
       - name: Create canonical package exactly once
         shell: pwsh
@@ -113,6 +114,7 @@ jobs:
             Version = '${{ steps.meta.outputs.version }}'
             Platform = 'x64'
             Configuration = 'Release'
+            DllPath = 'build/release-validation/plugins/NppAIAssistant/Release/NppAIAssistant.dll'
           }
 
           $releaseUrl = '${{ steps.meta.outputs.release_url }}'
@@ -154,6 +156,7 @@ jobs:
               Platform = 'x64'
               Configuration = 'Release'
               Version = '${{ steps.meta.outputs.version }}'
+              DllPath = 'build/release-validation/plugins/NppAIAssistant/Release/NppAIAssistant.dll'
             }
             if ($env:GITHUB_REF_TYPE -eq 'tag') {
               $verifyArgs.RequirePluginsAdminReady = $true
@@ -219,8 +222,9 @@ jobs:
   publish:
     name: Verify draft asset, publish, and verify public download
     needs: package-x64
-    if: github.ref_type == 'tag'
+    if: github.event_name == 'workflow_dispatch' && github.ref_type == 'tag' && inputs.publish
     runs-on: windows-latest
+    environment: release
     permissions:
       contents: write
     env:
@@ -266,6 +270,7 @@ jobs:
             --fail-on-no-commits `
             --draft `
             --title "NppAIAssistant v${{ needs.package-x64.outputs.version }}"
+          if ($LASTEXITCODE -ne 0) { throw "Release creation failed; no existing assets will be replaced." }
 
       - name: Re-download draft asset and verify storage bytes
         shell: pwsh
@@ -277,6 +282,7 @@ jobs:
             --repo $env:GH_REPO `
             --pattern '${{ needs.package-x64.outputs.zip_name }}' `
             --dir $draftDir
+          if ($LASTEXITCODE -ne 0) { throw "Draft asset download failed." }
 
           $download = Join-Path $draftDir '${{ needs.package-x64.outputs.zip_name }}'
           $actual = (Get-FileHash -LiteralPath $download -Algorithm SHA256).Hash.ToUpperInvariant()
@@ -292,6 +298,7 @@ jobs:
             --repo $env:GH_REPO `
             --draft=false `
             --latest
+          if ($LASTEXITCODE -ne 0) { throw "Publishing the verified draft failed." }
 
       - name: Download published ZIP and verify SHA-256
         shell: pwsh

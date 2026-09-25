@@ -72,7 +72,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "Python package 'jsonschema' is required. Install it with: $Python -m pip install jsonschema"
 }
 
-$tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("npp-plugin-schema-" + [guid]::NewGuid().ToString('N'))
+$tempRoot = Join-Path (Join-Path $PSScriptRoot '../build/schema-validation') ([guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $tempRoot | Out-Null
 
 $schemaPath = Join-Path $tempRoot 'pl.schema'
@@ -131,7 +131,5 @@ print('SCHEMA_PASS')
     }
 }
 finally {
-    if (Test-Path -LiteralPath $tempRoot) {
-        Remove-Item -LiteralPath $tempRoot -Recurse -Force
-    }
+    Write-Host "Schema validation evidence retained: $tempRoot"
 }

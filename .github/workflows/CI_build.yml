@@ -8,6 +8,13 @@ permissions:
   contents: read
 
 jobs:
+  validate-x64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Validate source, tests, security and binary contract
+        shell: pwsh
+        run: ./scripts/Test-ReleaseSource.ps1
   build:
     runs-on: windows-latest
     strategy:

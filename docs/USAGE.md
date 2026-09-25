@@ -58,8 +58,40 @@ You can control:
 - response detail
 - scenario modules
 - output rules
+- built-in policy and template sections through `Prompt Sections...`
 
-The prompt preview updates as these options change.
+The prompt preview updates as these options change. It now shows the prompt as
+visible sections:
+
+- Prompt Policy
+- Identity
+- Rules
+- Memory
+- Runtime Context
+- Assignment
+- Scenario Modules
+- Output Contract
+- Task Instruction
+- Source Context
+
+Runtime behavior is not enforced by prompt text alone. Provider capability
+checks, Structured JSON request transport, local JSON/schema validation,
+diagnostic redaction, and editor replacement safeguards remain program-enforced
+runtime paths.
+
+The preview also includes per-section and total estimated tokens. These values
+are local estimates, not exact provider billing or context-window counts.
+
+Use `Prompt Sections...` to inspect Prompt Policy, Identity, Rules, Assignment,
+Scenario Modules, and Output Contract. These built-in sections are locked by
+default. Clear `Lock section` before editing or resetting a section. The token
+dropdown inserts supported variables such as
+`{{PROVIDER}}`, `{{MODEL}}`, `{{LANGUAGE}}`, and `{{TIMESTAMP}}` into the
+focused template editor. Each prompt-section template is limited to 30,000
+characters so it can safely round-trip through the local settings file. Reset
+buttons restore the built-in defaults without changing the lock state. Pressing
+`OK` in this dialog only updates the containing Settings draft; the changes are
+saved only when the outer Settings dialog is also confirmed with `OK`.
 
 ## Presets
 
@@ -72,6 +104,53 @@ Current presets are designed for fast one-off tasks:
 - Write Docs
 
 These presets do not add hidden memory. They only reshape the prompt for the current request.
+
+## Memory Storage
+
+Memory storage is explicit and disabled by default. Use `Memory...` in settings
+to enable a visible Memory section and edit the memory text that will be sent.
+The prompt preview shows whether Memory is off or how many estimated tokens it
+adds.
+
+Memory is stored as plain plugin settings, not DPAPI-protected secret storage.
+Do not store API keys, OAuth tokens, passwords, private customer data, or
+anything that should not appear in normal Notepad++ plugin configuration files.
+
+## Capability Boundaries
+
+These items are planned but not shipped in the current build:
+
+- real OAuth sign-in for OpenAI, Gemini, Claude, or a hosted broker
+- floating inline editor overlay
+
+The existing paused Copilot OAuth code is not the same as a shipped OAuth login
+feature. OAuth work must be reported separately as storage model implemented,
+provider UI prepared, and real provider sign-in validated.
+
+## Waiting State
+
+Provider requests run off the UI thread. While a request is active, the panel
+uses a dedicated status strip to report preparation, connection, sending,
+waiting, response receipt, parsing/validation, completion, or failure. Provider,
+model, and send controls are disabled as appropriate. Historical chat text is
+not redrawn for a waiting animation. When the request completes, the result is
+posted back to the UI thread before the chat display or selected editor text is
+updated.
+
+## Custom Context Templates
+
+Use `Context Templates...` in settings to configure up to three right-click
+templates. Each slot has:
+
+- enable toggle
+- menu name
+- prompt template
+- optional replacement mode
+
+Enabled templates appear under the standard AI context-menu actions when text is
+selected in Notepad++. Replacement mode writes the AI result back to the original
+selection after the async request completes and the original buffer is still
+active.
 
 ## Prompt Preview
 
@@ -124,7 +203,17 @@ These actions are optimized for fast in-editor use.
 
 If `Ctrl+Enter` mode is enabled, plain Enter will no longer send directly.
 
+Use `A+` and `A-` in the panel toolbar to adjust display scale for the chat and
+input text. The scale is stored as a non-secret preference and is clamped between
+80% and 150%.
+
 ## Model Loading
+
+Local loopback services, including LM Studio, use a 900-second (15-minute)
+generation timeout for Chat Completions and Responses requests. Model discovery
+keeps its 1.5-second timeout; remote services retain their existing timeout.
+The generation timeout applies to WinHTTP transport phases, not a guaranteed
+total request deadline. Error 12002 indicates a transport timeout.
 
 Models are loaded dynamically after the relevant provider is configured and available.
 This helps avoid stale hardcoded model lists and makes the plugin better aligned with the actual provider account state.

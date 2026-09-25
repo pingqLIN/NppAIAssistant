@@ -19,6 +19,7 @@
 
 #include <string>
 #include <map>
+#include <functional>
 #include <windows.h>
 #include <winhttp.h>
 
@@ -32,14 +33,33 @@ struct HttpResponse {
     std::wstring errorMessage;
 };
 
+// Deliberately metadata-only transport telemetry. It never contains an URL,
+// request body, header, API key, or response payload.
+enum class HttpTransportPhase {
+    Connecting,
+    Sending,
+    AwaitingResponse,
+    Receiving,
+    Completed,
+    Failed,
+    ConnectionFailed,
+};
+
 // Simple HTTP client wrapper using WinHTTP
 class HttpClient {
 public:
+    using TransportObserver = std::function<void(HttpTransportPhase)>;
+
+    // The observer is scoped to the calling worker thread so concurrent plugin
+    // requests cannot expose or overwrite another request's telemetry.
+    static void setThreadTransportObserver(TransportObserver observer);
     // POST request with JSON body
     static HttpResponse post(
         const std::wstring& url,
         const std::wstring& body,
-        const std::map<std::wstring, std::wstring>& headers
+        const std::map<std::wstring, std::wstring>& headers,
+        DWORD timeoutMs = 0,
+        bool bypassProxy = false
     );
     
     // GET request
@@ -48,7 +68,9 @@ public:
     // GET request with headers
     static HttpResponse get(
         const std::wstring& url,
-        const std::map<std::wstring, std::wstring>& headers
+        const std::map<std::wstring, std::wstring>& headers,
+        DWORD timeoutMs = 0,
+        bool bypassProxy = false
     );
     
     // Set timeout in milliseconds (default: 30000)
@@ -57,6 +79,8 @@ public:
 private:
     static constexpr DWORD DEFAULT_TIMEOUT_MS = 30000;
     static DWORD _timeoutMs;
+    static thread_local TransportObserver _threadTransportObserver;
+    static void notifyTransportPhase(HttpTransportPhase phase);
     
     // Parse URL into components
     static bool parseUrl(

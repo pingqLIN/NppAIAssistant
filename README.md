@@ -12,9 +12,9 @@ A native Notepad++ plugin for explaining code, rewriting text, and turning a req
 
 [繁體中文](README_zh-TW.md) · [Download](https://github.com/pingqLIN/NppAIAssistant/releases/latest) · [Report an issue](https://github.com/pingqLIN/NppAIAssistant/issues) · [GPL-3.0](LICENSE)
 
-> **Version guide:** the published x64 release and official Plugin List entry are **0.1.0.0** (`v0.1.0`). The workspace tour below shows the **0.2.0.6 candidate**, which is not yet a published download. These new screenshots show actual native dialogs with sample content in an isolated UI preview; they do not demonstrate a live model response or a full Notepad++ host test.
+> **Version guide:** the current GitHub x64 release is **0.2.0.6** (`v0.2.0.6`). The Notepad++ Plugins Admin entry may still show the previous version while [upstream Plugin List PR #1196](https://github.com/notepad-plus-plus/nppPluginList/pull/1196) is reviewed. The workspace tour below reflects the 0.2.0.6 UI. Screenshots use native controls; release host acceptance was completed separately from screenshot capture.
 
-> **Development source:** OpenRouter is already included in `main` (PR #3). The optional AI context menu uses Ctrl + mouse right-click on selected text; ordinary right-click and keyboard menus stay native. Disable it in Settings. This behavior is not in the published v0.1.0 download. See [usage](docs/USAGE.md#context-menu-actions).
+> **Release behavior:** OpenRouter is included in v0.2.0.6. The optional AI context menu uses Ctrl + mouse right-click on selected text; ordinary right-click and keyboard menus stay native, and the feature can be disabled in Settings. See [usage](docs/USAGE.md#context-menu-actions).
 
 ## From a question to an edit
 
@@ -27,7 +27,7 @@ A native Notepad++ plugin for explaining code, rewriting text, and turning a req
   <img src="docs/assets/readme/nppaiassistant-workflow.jpeg" alt="The fox companion pulling illuminated pages through a moonlit workspace, representing text moving through an editing workflow" width="100%">
 </p>
 
-## Meet the workspace · 0.2.0.6 preview
+## Meet the workspace · v0.2.0.6
 
 ### Keep the request, response, and destination together
 
@@ -59,11 +59,28 @@ Prompt configuration brings task presets, response language, output rules, and t
   <img src="docs/assets/readme/nppaiassistant-prompt-companion.jpeg" alt="Close-up of the fox editing companion directing illuminated pages, echoing prompt inspection and deliberate document edits" width="680">
 </p>
 
+### Traditional Chinese (TW-Zh) workspace
+
+<p align="center">
+  <img src="docs/assets/screenshots/workspace-0.2.0.6-zh-tw.png" alt="Traditional Chinese native workspace in NppAIAssistant v0.2.0.6" width="49%">
+  <img src="docs/assets/screenshots/settings-0.2.0.6-zh-tw.png" alt="Traditional Chinese AI Services settings in NppAIAssistant v0.2.0.6" width="49%">
+</p>
+
+<img src="docs/assets/screenshots/prompt-0.2.0.6-zh-tw.png" alt="Traditional Chinese Prompt Behavior settings with prompt preview" width="680">
+
+The language selector labels Traditional Chinese as **TW-Zh** to distinguish it from Simplified Chinese while preserving the existing Traditional Chinese interface and settings behavior.
+
+### Native context-menu workflow
+
+<img src="docs/assets/screenshots/context-menu-actions.png" alt="NppAIAssistant context-menu actions for selected text in Notepad++" width="680">
+
+Ordinary right-click stays with the native Notepad++ menu. **Ctrl + right-click** on selected text opens the AI actions; **Shift+F10 / Menu key** stays native. The modifier can also be disabled entirely in Settings.
+
 ## Providers and output
 
-The candidate implements OpenAI, Gemini, Claude, LM Studio, and a generic OpenAI-compatible profile. Availability, model access, and usage charges depend on the selected provider. Copilot is currently paused.
+v0.2.0.6 implements OpenAI, Gemini, Claude, OpenRouter, LM Studio, and a generic OpenAI-compatible profile. Availability, model access, and usage charges depend on the selected provider. Copilot is currently paused.
 
-| Output mode | Behavior in the candidate |
+| Output mode | Behavior in v0.2.0.6 |
 | --- | --- |
 | Text | Plain response for general editing and drafting. |
 | Markdown | Basic headings, emphasis, code, lists, and quotes in the panel. HTML, images, links, and tables are not rendered. |
@@ -80,17 +97,17 @@ Use **Plugins → Plugins Admin**, search for **NppAIAssistant**, and install th
 
 For manual installation on **x64 Notepad++**:
 
-1. Download `NppAIAssistant-0.1.0.0-x64.zip` from the [v0.1.0 release](https://github.com/pingqLIN/NppAIAssistant/releases/tag/v0.1.0).
+1. Download `NppAIAssistant-0.2.0.6-x64.zip` from the [v0.2.0.6 release](https://github.com/pingqLIN/NppAIAssistant/releases/tag/v0.2.0.6).
 2. Close Notepad++ and back up any existing plugin DLL.
 3. Extract `NppAIAssistant.dll` to `<Notepad++>\plugins\NppAIAssistant\NppAIAssistant.dll`.
 4. Restart Notepad++ and open its **Plugins → NppAIAssistant** menu.
 
-The candidate screenshots above will differ from the published version. Match the plugin architecture to your editor; this page does not offer x86 or ARM64 release downloads.
+The screenshots above correspond to the v0.2.0.6 interface. Match the plugin architecture to your editor; this page does not offer x86 or ARM64 release downloads.
 
 ## Privacy and editing behavior
 
 - A request sends its assembled prompt and included text to the endpoint you choose. A local endpoint keeps that request local only if the configured service itself runs locally.
-- The candidate protects stored API credentials with Windows DPAPI under `%LocalAppData%\Notepad++\AIAssistant`. Preferences and visible prompt text live under `%AppData%\Notepad++\plugins\config\NppAIAssistant.ini`.
+- v0.2.0.6 protects stored API credentials with Windows DPAPI under `%LocalAppData%\Notepad++\AIAssistant`. Preferences and visible prompt text live under `%AppData%\Notepad++\plugins\config\NppAIAssistant.ini`.
 - A portable Notepad++ folder does **not** isolate those production settings paths.
 - Editor writes are guarded against changed documents, read-only buffers, and lossy encoding conversion. Review generated text before applying it; supported writes are grouped for undo.
 - Requests are single-turn by default. A visible transcript does not mean previous replies are automatically sent again.

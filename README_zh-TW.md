@@ -33,8 +33,6 @@
 
 <img src="docs/assets/screenshots/workspace-0.2.0.6-en.png" alt="英文原生工作台預覽，包含服務選擇、Markdown 範例回覆、輸出位置與輸入區" width="680">
 
-<img src="docs/assets/screenshots/workspace-0.2.0.6-zh-tw.png" alt="繁體中文原生工作台預覽，包含服務選擇、回覆區、輸出位置與輸入區" width="680">
-
 上方選擇服務、模型、任務設定與輸出格式；中間閱讀回覆；下方保留輸出位置和輸入區。可調整面板寬度、拖曳輸入區分隔線，或使用 **A+ / A−** 調整閱讀字級。
 
 | 控制項 | 能幫你完成什麼 |
@@ -48,8 +46,6 @@
 ### 分開設定連線與任務
 
 <img src="docs/assets/screenshots/settings-0.2.0.6-en.png" alt="原生設定對話框，顯示空白 API 金鑰欄位及本機服務設定" width="680">
-
-<img src="docs/assets/screenshots/settings-0.2.0.6-zh-tw.png" alt="繁體中文 AI Services 設定，展示雲端、OpenAI 相容服務與 LM Studio 連線控制項" width="680">
 
 設定將服務連線與提示配置分開。LM Studio 有獨立的網址、API 模式與模型選擇：先探索可用模型，再明確選擇預設模型。截圖中的金鑰欄位皆為空白；拍攝環境停用網路，因此模型探索顯示無法載入。
 

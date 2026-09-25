@@ -15,14 +15,14 @@ Status checked on 2026-09-26. Read each release's asset list and notes before do
 | v0.2.0.6 (DLL 0.2.0.6) | x64 ZIP available | Included | Included |
 | v0.1.0 (DLL 0.1.0.0) | x64 ZIP available | Not included | Not included |
 
-**v0.2.0.6 is the current GitHub release.** The Notepad++ Plugins Admin entry may still show the previous version until [upstream Plugin List PR #1196](https://github.com/notepad-plus-plus/nppPluginList/pull/1196) is accepted.
+**v0.2.0.6 is the current GitHub release and the official Notepad++ x64 Plugin List entry.** The upstream update was merged in [Plugin List PR #1196](https://github.com/notepad-plus-plus/nppPluginList/pull/1196); individual Plugins Admin clients may reflect it after list propagation.
 
 Direct x64 asset:
 - `NppAIAssistant-0.2.0.6-x64.zip`
 - SHA-256: `23B5051C584FE331C150D3361FC6FE4A23838CCDD33194F75A544776AC76B621`
 - Checksum sidecar is published beside the ZIP in GitHub Releases.
 
-v0.2.0.6 已正式發布，可直接從 GitHub Releases 下載；Plugins Admin 更新則需等待上游 Plugin List 審核。
+v0.2.0.6 已正式發布，且官方 Plugin List 更新亦已合併；可直接從 GitHub Releases 下載，個別 Plugins Admin 顯示時間可能因清單傳播略有延遲。
 
 ## Install / 手動安裝
 

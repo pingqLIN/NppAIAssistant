@@ -77,7 +77,7 @@ constexpr std::array<LLMProvider, 5> kEnabledProviders = {
     LLMProvider::OpenAI, LLMProvider::Gemini, LLMProvider::Claude,
     LLMProvider::OpenAICompatible, LLMProvider::LMStudio};
 
-enum class ContextMenuModifier { Ctrl = 0, Shift = 1, Alt = 2, CtrlShift = 3 };
+enum class ContextMenuModifier { Ctrl = 0, Shift = 1, Alt = 2, CtrlShift = 3, Disabled = 4 };
 
 enum class UiLanguage {
   English,
@@ -2030,6 +2030,7 @@ ContextMenuModifier sanitizeContextMenuModifier(int rawValue) {
   case static_cast<int>(ContextMenuModifier::Shift): return ContextMenuModifier::Shift;
   case static_cast<int>(ContextMenuModifier::Alt): return ContextMenuModifier::Alt;
   case static_cast<int>(ContextMenuModifier::CtrlShift): return ContextMenuModifier::CtrlShift;
+  case static_cast<int>(ContextMenuModifier::Disabled): return ContextMenuModifier::Disabled;
   default: return ContextMenuModifier::Ctrl;
   }
 }
@@ -2037,9 +2038,13 @@ ContextMenuModifier sanitizeContextMenuModifier(int rawValue) {
 void populateContextMenuModifierCombo(HWND combo, ContextMenuModifier selected) {
   if (!combo) return;
   ::SendMessageW(combo, CB_RESETCONTENT, 0, 0);
-  const std::array<const wchar_t *, 4> labels = {
+  const wchar_t *disabledLabel =
+      g_uiLanguage == UiLanguage::Chinese ? L"\u505C\u7528" :
+      g_uiLanguage == UiLanguage::Japanese ? L"\u7121\u52B9" :
+      g_uiLanguage == UiLanguage::Spanish ? L"Desactivado" : L"Disabled";
+  const std::array<const wchar_t *, 5> labels = {
       tr(TextId::ModifierCtrl), tr(TextId::ModifierShift),
-      tr(TextId::ModifierAlt), tr(TextId::ModifierCtrlShift)};
+      tr(TextId::ModifierAlt), tr(TextId::ModifierCtrlShift), disabledLabel};
   for (const wchar_t *label : labels)
     ::SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label));
   ::SendMessageW(combo, CB_SETCURSEL, static_cast<WPARAM>(selected), 0);
@@ -2053,6 +2058,7 @@ bool isConfiguredContextModifierPressed(ContextMenuModifier modifier) {
   case ContextMenuModifier::Shift: return shift && !ctrl && !alt;
   case ContextMenuModifier::Alt: return alt && !ctrl && !shift;
   case ContextMenuModifier::CtrlShift: return ctrl && shift && !alt;
+  case ContextMenuModifier::Disabled: return false;
   case ContextMenuModifier::Ctrl:
   default: return ctrl && !shift && !alt;
   }
@@ -2404,7 +2410,8 @@ void loadPreferencesFromSettings(AIAssistantConfig &config) {
   if (config.contextMenuModifier != ContextMenuModifier::Ctrl &&
       config.contextMenuModifier != ContextMenuModifier::Shift &&
       config.contextMenuModifier != ContextMenuModifier::Alt &&
-      config.contextMenuModifier != ContextMenuModifier::CtrlShift) {
+      config.contextMenuModifier != ContextMenuModifier::CtrlShift &&
+      config.contextMenuModifier != ContextMenuModifier::Disabled) {
     config.contextMenuModifier = ContextMenuModifier::Ctrl;
   }
   config.compatibleDisplayName = sanitizeCompatibleDisplayName(

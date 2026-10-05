@@ -373,6 +373,9 @@ struct AIAssistantConfig {
   std::wstring lmStudioBaseUrl = L"http://127.0.0.1:1234/v1";
   std::wstring compatibleDefaultModel;
   std::wstring lmStudioDefaultModel;
+  std::wstring openAIDefaultModel;
+  std::wstring geminiDefaultModel;
+  std::wstring claudeDefaultModel;
   CompatibleApiMode compatibleApiMode = CompatibleApiMode::ChatCompletions;
   CompatibleApiMode lmStudioApiMode = CompatibleApiMode::ChatCompletions;
   std::wstring customPromptInstructions;
@@ -669,6 +672,9 @@ const wchar_t *kCompatibleDefaultModelName = L"compatible_default_model";
 const wchar_t *kLmStudioBaseUrlName = L"lmstudio_base_url";
 const wchar_t *kLmStudioApiModeName = L"lmstudio_api_mode";
 const wchar_t *kLmStudioDefaultModelName = L"lmstudio_default_model";
+const wchar_t *kOpenAIDefaultModelName = L"openai_default_model";
+const wchar_t *kGeminiDefaultModelName = L"gemini_default_model";
+const wchar_t *kClaudeDefaultModelName = L"claude_default_model";
 const wchar_t *kModelDiscoveryGenerationProperty =
     L"NppAIAssistant.ModelDiscoveryGeneration";
 const wchar_t *kUiLanguagePreferenceName = L"ui_language_preference";
@@ -2370,6 +2376,9 @@ void cleanupSecurePreferenceBlobs() {
       kLmStudioBaseUrlName,
       kLmStudioApiModeName,
       kLmStudioDefaultModelName,
+      kOpenAIDefaultModelName,
+      kGeminiDefaultModelName,
+      kClaudeDefaultModelName,
       kUiLanguagePreferenceName,
       kResponseLanguageName,
       kEncodingPreferenceName,
@@ -2434,10 +2443,22 @@ void loadPreferencesFromSettings(AIAssistantConfig &config) {
       SettingsStorage::loadString(kLmStudioApiModeName), 0));
   config.lmStudioDefaultModel =
       SettingsStorage::loadString(kLmStudioDefaultModelName);
+  config.openAIDefaultModel =
+      SettingsStorage::loadString(kOpenAIDefaultModelName);
+  config.geminiDefaultModel =
+      SettingsStorage::loadString(kGeminiDefaultModelName);
+  config.claudeDefaultModel =
+      SettingsStorage::loadString(kClaudeDefaultModelName);
   if (!isAcceptableModelId(config.compatibleDefaultModel))
     config.compatibleDefaultModel.clear();
   if (!isAcceptableModelId(config.lmStudioDefaultModel))
     config.lmStudioDefaultModel.clear();
+  if (!isAcceptableModelId(config.openAIDefaultModel))
+    config.openAIDefaultModel.clear();
+  if (!isAcceptableModelId(config.geminiDefaultModel))
+    config.geminiDefaultModel.clear();
+  if (!isAcceptableModelId(config.claudeDefaultModel))
+    config.claudeDefaultModel.clear();
   if (config.compatibleApiMode != CompatibleApiMode::Responses) config.compatibleApiMode = CompatibleApiMode::ChatCompletions;
   if (config.lmStudioApiMode != CompatibleApiMode::Responses) config.lmStudioApiMode = CompatibleApiMode::ChatCompletions;
   config.compatibleDisplayName =
@@ -2650,6 +2671,9 @@ bool savePreferencesToSettings(const AIAssistantConfig &config) {
                               std::to_wstring(static_cast<int>(config.lmStudioApiMode)));
   SettingsStorage::saveString(kLmStudioDefaultModelName,
                               config.lmStudioDefaultModel);
+  SettingsStorage::saveString(kOpenAIDefaultModelName, config.openAIDefaultModel);
+  SettingsStorage::saveString(kGeminiDefaultModelName, config.geminiDefaultModel);
+  SettingsStorage::saveString(kClaudeDefaultModelName, config.claudeDefaultModel);
   SettingsStorage::saveString(
       kDefaultProviderName,
       std::to_wstring(static_cast<int>(sanitizeProvider(config.defaultProvider))));
@@ -4004,13 +4028,60 @@ void populateModelComboPlaceholder(HWND modelCombo, const std::wstring &text) {
 
 const std::wstring &getConfiguredDefaultModel(LLMProvider provider) {
   static const std::wstring empty;
-  if (provider == LLMProvider::OpenAICompatible) {
+  switch (provider) {
+  case LLMProvider::OpenAI:
+    return g_config.openAIDefaultModel;
+  case LLMProvider::Gemini:
+    return g_config.geminiDefaultModel;
+  case LLMProvider::Claude:
+    return g_config.claudeDefaultModel;
+  case LLMProvider::OpenAICompatible:
     return g_config.compatibleDefaultModel;
-  }
-  if (provider == LLMProvider::LMStudio) {
+  case LLMProvider::LMStudio:
     return g_config.lmStudioDefaultModel;
+  default:
+    return empty;
   }
-  return empty;
+}
+
+std::wstring preferredFallbackModel(LLMProvider provider) {
+  switch (provider) {
+  case LLMProvider::OpenAI:
+    return L"gpt-4o-mini";
+  case LLMProvider::Gemini:
+    return L"gemini-3.6-flash";
+  case LLMProvider::Claude:
+    return L"claude-sonnet-5-5";
+  default:
+    return L"";
+  }
+}
+
+void rememberProviderDefaultModel(LLMProvider provider, const std::wstring &model) {
+  if (!isAcceptableModelId(model)) return;
+  std::wstring *slot = nullptr;
+  switch (provider) {
+  case LLMProvider::OpenAI:
+    slot = &g_config.openAIDefaultModel;
+    break;
+  case LLMProvider::Gemini:
+    slot = &g_config.geminiDefaultModel;
+    break;
+  case LLMProvider::Claude:
+    slot = &g_config.claudeDefaultModel;
+    break;
+  case LLMProvider::OpenAICompatible:
+    slot = &g_config.compatibleDefaultModel;
+    break;
+  case LLMProvider::LMStudio:
+    slot = &g_config.lmStudioDefaultModel;
+    break;
+  default:
+    return;
+  }
+  if (*slot == model) return;
+  *slot = model;
+  savePreferencesToSettings(g_config);
 }
 
 bool isAcceptableModelId(const std::wstring &model) {
@@ -4028,8 +4099,10 @@ void populateModelComboModels(HWND modelCombo,
 
   int currentIndex = -1;
   int defaultIndex = -1;
+  int preferredIndex = -1;
   const std::wstring &configuredDefault =
       getConfiguredDefaultModel(g_currentProvider);
+  const std::wstring preferred = preferredFallbackModel(g_currentProvider);
   std::vector<std::wstring> acceptedModels;
   acceptedModels.reserve(models.size());
   for (const std::wstring &model : models) {
@@ -4046,6 +4119,9 @@ void populateModelComboModels(HWND modelCombo,
     if (!configuredDefault.empty() && configuredDefault == model) {
       defaultIndex = static_cast<int>(i);
     }
+    if (preferredIndex < 0 && !preferred.empty() && preferred == model) {
+      preferredIndex = static_cast<int>(i);
+    }
   }
   if (acceptedModels.empty()) {
     g_currentModel.clear();
@@ -4053,9 +4129,12 @@ void populateModelComboModels(HWND modelCombo,
     return;
   }
   const int selectedIndex =
-      currentIndex >= 0 ? currentIndex : (defaultIndex >= 0 ? defaultIndex : 0);
+      currentIndex >= 0 ? currentIndex
+                        : (defaultIndex >= 0 ? defaultIndex
+                                             : (preferredIndex >= 0 ? preferredIndex : 0));
   ::SendMessageW(modelCombo, CB_SETCURSEL, static_cast<WPARAM>(selectedIndex), 0);
   g_currentModel = acceptedModels[static_cast<size_t>(selectedIndex)];
+  rememberProviderDefaultModel(g_currentProvider, g_currentModel);
   ::SendMessageW(modelCombo, CB_SETDROPPEDWIDTH, 250, 0);
 }
 
@@ -4442,12 +4521,21 @@ void applyConfigProviderSnapshotToPromptContext(
     const AIAssistantConfig &config, PromptAssemblyContext &context) {
   context.provider = sanitizeProvider(config.defaultProvider);
   context.providerName = getProviderNameForConfig(context.provider, config);
-  if (context.provider == LLMProvider::OpenAICompatible) {
+  if (context.provider == LLMProvider::OpenAI) {
+    context.model = config.openAIDefaultModel;
+  } else if (context.provider == LLMProvider::Gemini) {
+    context.model = config.geminiDefaultModel;
+  } else if (context.provider == LLMProvider::Claude) {
+    context.model = config.claudeDefaultModel;
+  } else if (context.provider == LLMProvider::OpenAICompatible) {
     context.model = config.compatibleDefaultModel;
   } else if (context.provider == LLMProvider::LMStudio) {
     context.model = config.lmStudioDefaultModel;
   } else if (context.provider != g_currentProvider) {
     context.model.clear();
+  }
+  if (context.model.empty() && context.provider == g_currentProvider) {
+    context.model = g_currentModel;
   }
 }
 
@@ -7443,6 +7531,7 @@ INT_PTR CALLBACK PanelDlgProc(HWND hwnd, UINT message, WPARAM wParam,
                            reinterpret_cast<LPARAM>(model.data()));
             model.resize(static_cast<size_t>(length));
             g_currentModel = std::move(model);
+            rememberProviderDefaultModel(g_currentProvider, g_currentModel);
             setRequestProgress(RequestProgressState::Idle);
           } else {
             g_currentModel.clear();

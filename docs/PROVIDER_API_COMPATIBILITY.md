@@ -12,7 +12,15 @@ assistant answer that should appear in Notepad++.
 | LM Studio | `http://127.0.0.1:1234/v1` by default | Optional local API token | `POST /chat/completions` or `POST /responses` | Chat content or Responses `output_text` content |
 | Hugging Face Inference Providers | `https://router.huggingface.co/v1` | `Authorization: Bearer <HF_TOKEN>` | `POST /chat/completions`; `/responses` is beta | Chat content or Responses `output_text` content |
 
-All OpenAI-compatible and Copilot chat requests set `stream: false`, because
+All OpenAI chat requests send `max_completion_tokens` instead of the deprecated
+`max_tokens`. Current GPT-5 and o-series models reject `max_tokens`. The model
+list keeps chat-family ids (`gpt-`, `chatgpt-`, `o1`, `o3`, `o4`, `o5`) and
+drops image, audio, realtime, transcription, speech, and embedding ids. If the
+user has not saved a model, the workbench prefers `gpt-4o-mini`,
+`gemini-3.6-flash`, or `claude-sonnet-5-5` when that id is in the provider
+list, then stores the selection.
+
+OpenAI-compatible and Copilot chat requests set `stream: false`, because
 those client paths consume a complete JSON response and do not parse
 Server-Sent Events. Gemini and Claude use their provider-specific non-streaming
 request endpoints rather than an OpenAI-compatible `stream` field. The generic

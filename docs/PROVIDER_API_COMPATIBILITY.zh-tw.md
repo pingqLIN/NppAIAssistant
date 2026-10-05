@@ -11,6 +11,12 @@ request／response 格式；提示詞模板只描述應顯示在 Notepad++ 內�
 | LM Studio | 預設 `http://127.0.0.1:1234/v1` | 可選的本機 API token | `POST /chat/completions` 或 `POST /responses` | Chat content 或 Responses 的 `output_text` content |
 | Hugging Face Inference Providers | `https://router.huggingface.co/v1` | `Authorization: Bearer <HF_TOKEN>` | `POST /chat/completions`；`/responses` 為 beta | Chat content 或 Responses 的 `output_text` content |
 
+OpenAI chat request 改送 `max_completion_tokens`，不再送已棄用的 `max_tokens`。
+目前的 GPT-5 與 o 系列模型會拒絕 `max_tokens`。模型清單保留聊天家族 id
+（`gpt-`、`chatgpt-`、`o1`、`o3`、`o4`、`o5`），並排除 image、audio、realtime、
+transcription、speech 與 embedding id。若使用者尚未儲存模型，工作台會在清單中
+優先選 `gpt-4o-mini`、`gemini-3.6-flash` 或 `claude-sonnet-5-5`，再記住該選擇。
+
 OpenAI-compatible 與 Copilot chat 路徑會讀取完整 JSON、尚未解析
 Server-Sent Events，因此這些 request 都明確設定 `stream: false`。Gemini 與
 Claude 使用各自 provider-specific 的 non-streaming endpoint，不使用

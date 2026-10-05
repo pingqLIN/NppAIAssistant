@@ -213,9 +213,22 @@ void addUniqueModel(std::vector<std::wstring> &models, const std::wstring &model
 }
 
 bool isLikelyOpenAIChatModel(const std::wstring &model) {
-  return startsWith(model, L"gpt-") || startsWith(model, L"chatgpt-") ||
-         startsWith(model, L"o1") || startsWith(model, L"o3") ||
-         startsWith(model, L"o4");
+  std::wstring lower = model;
+  std::transform(lower.begin(), lower.end(), lower.begin(),
+                 [](wchar_t ch) { return static_cast<wchar_t>(towlower(ch)); });
+  const bool chatFamily = startsWith(lower, L"gpt-") ||
+                          startsWith(lower, L"chatgpt-") ||
+                          startsWith(lower, L"o1") || startsWith(lower, L"o3") ||
+                          startsWith(lower, L"o4") || startsWith(lower, L"o5");
+  if (!chatFamily) return false;
+  // /v1/models also returns non-chat ids that share these prefixes.
+  static const wchar_t *kBlocked[] = {
+      L"realtime", L"transcribe", L"audio", L"image", L"tts",
+      L"whisper", L"embedding", L"moderation", L"dall-e", L"sora"};
+  for (const wchar_t *token : kBlocked) {
+    if (lower.find(token) != std::wstring::npos) return false;
+  }
+  return true;
 }
 
 bool appendStructuredOutputFormat(const StructuredOutputConfig &config,
@@ -647,7 +660,10 @@ ModelListResponse LLMApiClient::listClaudeModels(const std::wstring &apiKey) {
 bool isKnownClaudePromptCacheModel(const std::wstring &model) {
   return startsWith(model, L"claude-sonnet-4-") ||
          startsWith(model, L"claude-opus-4-") ||
-         startsWith(model, L"claude-haiku-4-");
+         startsWith(model, L"claude-haiku-4-") ||
+         startsWith(model, L"claude-sonnet-5") ||
+         startsWith(model, L"claude-opus-5") ||
+         startsWith(model, L"claude-haiku-5");
 }
 
 ModelListResponse LLMApiClient::listOpenAICompatibleModels(
@@ -772,7 +788,7 @@ LLMResponse LLMApiClient::callOpenAI(const std::wstring &apiKey,
       escapedPrompt +
       L"\"}],"
       L"\"stream\":false,"
-      L"\"max_tokens\":2048";
+      L"\"max_completion_tokens\":2048";
   if (!appendStructuredOutputFormat(structuredOutput,
                                     CompatibleApiMode::ChatCompletions,
                                     requestBody, response.errorMessage)) {

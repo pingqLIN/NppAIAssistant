@@ -68,11 +68,11 @@ public:
 
   static LLMResponse callGemini(const std::wstring &apiKey,
                                 const std::wstring &prompt,
-                                const std::wstring &model = L"gemini-2.0-flash");
+                                const std::wstring &model = L"gemini-3.6-flash");
 
   static LLMResponse
   callClaude(const std::wstring &apiKey, const std::wstring &prompt,
-             const std::wstring &model = L"claude-sonnet-4-20250514",
+             const std::wstring &model = L"claude-sonnet-5-5",
              const std::wstring &cacheStablePrefix = L"");
 
   static LLMResponse callOpenAICompatible(
